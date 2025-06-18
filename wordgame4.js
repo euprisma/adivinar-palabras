@@ -93,7 +93,7 @@ async function fetchRandomWords(count = 5) {
 // Helper function to translate English words to Spanish using DeepL
 async function translateToSpanish(englishWords) {
     try {
-        const response = await fetch('http://localhost:3000/translate', {
+        const response = await fetch('https://translation-proxy-pearl.vercel.app/api/translate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

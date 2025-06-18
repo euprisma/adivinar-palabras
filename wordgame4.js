@@ -93,30 +93,39 @@ async function fetchRandomWords(count = 5) {
 // Helper function to translate English words to Spanish using DeepL
 async function translateToSpanish(englishWords) {
     try {
+        // Validate input
+        if (!Array.isArray(englishWords) || englishWords.length === 0 || !englishWords.every(word => typeof word === 'string' && word.trim())) {
+            console.error('Invalid input: englishWords must be a non-empty array of non-empty strings', englishWords);
+            return [];
+        }
+        console.log('Translating words:', englishWords);
+
         const response = await fetch('https://translation-proxy-pearl.vercel.app/api/translate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                text: englishWords,
+                text: englishWords, // Already an array
                 source_lang: 'EN',
                 target_lang: 'ES'
             })
         });
+
         if (!response.ok) {
             throw new Error(`Proxy error: ${response.status} ${response.statusText}`);
         }
+
         const data = await response.json();
         console.log('DeepL raw response:', data);
 
-        // Ensure translations array matches input length
-        if (!data.translations || data.translations.length !== englishWords.length) {
+        // Validate response
+        if (!data.translations || !Array.isArray(data.translations) || data.translations.length !== englishWords.length) {
             console.error('Translation mismatch:', data.translations?.length, 'translations for', englishWords.length, 'words');
             return [];
         }
 
         const translatedWords = data.translations
             .map((t, index) => ({
-                originalWord: englishWords[index], // Store original for logging
+                originalWord: englishWords[index],
                 original: normalizar(englishWords[index]),
                 translated: normalizar(t.text).toLowerCase()
             }))
@@ -131,6 +140,7 @@ async function translateToSpanish(englishWords) {
             .filter(word => 
                 word.length >= 4 && word.length <= 12 && /^[a-záéíóúüñ]+$/.test(word)
             );
+
         console.log('Filtered Spanish words:', translatedWords);
         return translatedWords;
     } catch (error) {

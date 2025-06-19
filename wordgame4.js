@@ -1028,6 +1028,7 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
         container.insertBefore(progress, prompt);
         output.innerHTML = '';
         console.log('play_game: UI initialized');
+        update_ui(); // Added to show initial UI state
     } catch (err) {
         console.error('play_game: Error setting up UI', err);
         output.innerText = 'Error al configurar la interfaz.';

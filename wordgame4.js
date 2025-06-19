@@ -285,7 +285,7 @@ function escapeHTML(str) {
 }
 
 async function get_guess(guessed_letters, secret_word, prompt, input, output, button) {
-    console.log('get_guess: Starting, Loaded version 2025-06-19-v9.14', { 
+    console.log('get_guess: Starting, Loaded version 2025-06-19-v9.15', { 
         prompt: prompt?.innerText, 
         inputExists: !!input?.parentNode, 
         buttonExists: !!button?.parentNode 
@@ -315,9 +315,10 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
         if (input.parentNode) input.focus();
         if (button) {
             button.disabled = true;
-            input.addEventListener('input', () => {
+            const enableButton = () => {
                 button.disabled = !input.value.trim();
-            }, { once: true });
+            };
+            input.addEventListener('input', enableButton);
         }
     } catch (err) {
         console.error('get_guess: Error setting input focus', err);
@@ -328,9 +329,9 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
         let enterHandler, buttonHandler;
 
         const handleGuess = () => {
-            const rawGuess = input.value;
-            console.log('get_guess: Captured raw input:', { raw: rawGuess, trimmed: rawGuess.trim(), secret_word, normalized_secret });
+            const rawGuess = input.value || '';
             const trimmedGuess = rawGuess.trim();
+            console.log('get_guess: Captured input:', { rawGuess, trimmedGuess, secret_word, normalized_secret });
             if (!trimmedGuess) {
                 output.innerText = 'Entrada vacía. Intenta de nuevo.';
                 output.style.color = 'red';
@@ -347,7 +348,7 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
             // Validate word or letter guess
             if (permitir_palabra && trimmedGuess.length === secret_word.length && /^[a-záéíóúüñ]+$/.test(trimmedGuess)) {
                 cleanup();
-                resolve(trimmedGuess); // Return trimmed guess to preserve accents
+                resolve(trimmedGuess);
             } else if (trimmedGuess.length === 1 && /^[a-záéíóúüñ]$/.test(trimmedGuess)) {
                 cleanup();
                 resolve(trimmedGuess);
@@ -676,7 +677,7 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
     let feedback, feedback_color;
     let guess = '';
 
-    const normalized_secret = normalizar(secret_word); // Normalize secret word for comparison
+    const normalized_secret = normalizar(secret_word);
 
     const get_ai_guess_wrapper = async (mustBeConsonant = false) => {
         try {
@@ -694,44 +695,43 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
     };
 
     const get_human_guess = async () => {
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Input timeout')), 30000));
         try {
-            const human_guess = await Promise.race([get_guess(guessed_letters, secret_word, prompt, input, output, button), timeoutPromise]);
+            const human_guess = await get_guess(guessed_letters, secret_word, prompt, input, output, button);
             console.log('process_guess: Human guess:', human_guess);
             if (!human_guess.trim()) {
                 feedback = `Entrada vacía. Por favor, ingresa una adivinanza válida.`;
                 feedback_color = 'orange';
                 display_feedback(feedback, feedback_color, player, true);
-                return null; // Retry without counting as timeout
+                return null;
             }
-            timeout_retries = 0; // Reset on successful input
+            timeout_retries = 0;
             return human_guess.trim();
         } catch (error) {
             console.error('process_guess: Guess input error:', { name: error.name, message: error.message, stack: error.stack });
             timeout_retries++;
-            console.log('process_guess: Timeout occurred', { player, timeout_retries });
+            console.log('process_guess: Input error', { player, timeout_retries });
             if (timeout_retries === max_timeout_retries - 1) {
                 feedback = `Última oportunidad para ingresar tu adivinanza.`;
                 feedback_color = 'orange';
                 display_feedback(feedback, feedback_color, player, true);
-                return null; // Retry
+                return null;
             } else if (timeout_retries < max_timeout_retries) {
                 feedback = `Por favor, ingresa tu adivinanza. Intentos restantes: ${max_timeout_retries - timeout_retries}.`;
                 feedback_color = 'orange';
                 display_feedback(feedback, feedback_color, player, true);
-                return null; // Retry
+                return null;
             } else {
                 penalizo = true;
-                feedback = `Demasiados tiempos de espera. Pierdes el turno.`;
+                feedback = `Demasiados errores de entrada. Pierdes el turno.`;
                 if (scores[player] > 0) {
                     const penalty = Math.min(1, scores[player]);
                     feedback += ` (-${penalty} punto)`;
                     scores[player] = Math.max(0, scores[player] - penalty);
-                    console.log('process_guess: Timeout penalty applied', { player, penalty, new_score: scores[player] });
+                    console.log('process_guess: Input error penalty applied', { player, penalty, new_score: scores[player] });
                 }
                 feedback_color = 'red';
                 display_feedback(feedback, feedback_color, player, true);
-                return false; // End turn
+                return false;
             }
         }
     };
@@ -744,8 +744,8 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
     } else {
         while (timeout_retries < max_timeout_retries) {
             const result = await get_human_guess();
-            if (result === null) continue; // Retry on empty or timeout
-            if (result === false) return { penalizo, tries, scores, guessed_letters, word_guessed: false }; // End turn
+            if (result === null) continue;
+            if (result === false) return { penalizo, tries, scores, guessed_letters, word_guessed: false };
             guess = result;
             break;
         }
@@ -784,12 +784,12 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
             }
 
             if (player === 'IA') {
-                guess = await get_ai_guess_wrapper(true); // Require consonant
+                guess = await get_ai_guess_wrapper(true);
                 if (!guess) break;
             } else {
                 const result = await get_human_guess();
-                if (result === null) continue; // Retry on empty or timeout
-                if (result === false) return { penalizo, tries, scores, guessed_letters, word_guessed: false }; // End turn
+                if (result === null) continue;
+                if (result === false) return { penalizo, tries, scores, guessed_letters, word_guessed: false };
                 guess = result;
             }
             continue;
@@ -797,7 +797,7 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
 
         if (guess.length === 1 && !secret_word.includes(guess) && used_wrong_letters.has(guess)) {
             if (retried < max_retries - 1) {
-                display_feedback(`Advertencia: '${guess}' ya fue intentada. Intenta de nuevo.`, 'orange', player);
+                display_feedback(`Advertencia: '${guess}' ya intentada. Intenta de nuevo.`, 'orange', player);
                 retried++;
                 console.log('process_guess: Repeated wrong letter', { player, guess, retried });
                 if (player === 'IA') {
@@ -805,8 +805,8 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
                     if (!guess) break;
                 } else {
                     const result = await get_human_guess();
-                    if (result === null) continue; // Retry on empty or timeout
-                    if (result === false) return { penalizo, tries, scores, guessed_letters, word_guessed: false }; // End turn
+                    if (result === null) continue;
+                    if (result === false) return { penalizo, tries, scores, guessed_letters, word_guessed: false };
                     guess = result;
                 }
                 continue;
@@ -834,8 +834,8 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
                     if (!guess) break;
                 } else {
                     const result = await get_human_guess();
-                    if (result === null) continue; // Retry on empty or timeout
-                    if (result === false) return { penalizo, tries, scores, guessed_letters, word_guessed: false }; // End turn
+                    if (result === null) continue;
+                    if (result === false) return { penalizo, tries, scores, guessed_letters, word_guessed: false };
                     guess = result;
                 }
                 continue;
@@ -863,8 +863,8 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
                     if (!guess) break;
                 } else {
                     const result = await get_human_guess();
-                    if (result === null) continue; // Retry on empty or timeout
-                    if (result === false) return { penalizo, tries, scores, guessed_letters, word_guessed: false }; // End turn
+                    if (result === null) continue;
+                    if (result === false) return { penalizo, tries, scores, guessed_letters, word_guessed: false };
                     guess = result;
                 }
                 continue;

@@ -1015,7 +1015,7 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
         container.appendChild(button);
         container.appendChild(output);
         prompt.innerText = 'Ingresa una letra o la palabra completa:';
-        input.value = ''; // Clear input only at initialization
+        input.value = ''; // Clear input at initialization
         if (input.parentNode) input.focus();
         game_info = document.createElement('p');
         game_info.innerHTML = `--- Juego ${games_played + 1} de ${games_to_play} ---<br>Palabra secreta: ${provided_secret_word.length} letras.<br>Intentos: ${total_tries}. Puntaje máximo: ${max_score}.` +
@@ -1081,6 +1081,11 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
                 input.focus();
             }
 
+            // Clear feedback output in Modes 1 and 2 before new guess
+            if (mode === '1' || mode === '2') {
+                output.innerHTML = '';
+            }
+
             const result = await process_guess(
                 player,
                 guessed_letters,
@@ -1111,12 +1116,14 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
             }));
 
             if (result.tries[player] == null || result.tries[player] === 0) {
-                display_feedback(`¡<strong>${player}</strong> sin intentos!`, 'red', player, true);
+                output.innerHTML = ''; // Clear before final message
+                display_feedback(`¡<strong>${player}</strong> sin intentos!`, 'red', player, false);
                 await delay(500);
             }
 
             if (result.word_guessed || normalizar(provided_secret_word).split('').every(l => guessed_letters.has(l))) {
-                display_feedback(`¡Felicidades, <strong>${player}</strong>! Adivinaste la palabra!`, 'green', player, true);
+                output.innerHTML = ''; // Clear before final message
+                display_feedback(`¡Felicidades, <strong>${player}</strong>! Adivinaste la palabra!`, 'green', player, false);
                 break;
             }
 

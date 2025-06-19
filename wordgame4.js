@@ -284,125 +284,69 @@ function escapeHTML(str) {
     })[match]);
 }
 
-async function get_guess(guessed_letters, secret_word, prompt, input, output, button) {
-    console.log('get_guess: Starting, Loaded version 2025-06-19-v9.16', JSON.stringify({ 
-        prompt: prompt?.innerText, 
-        inputExists: !!input?.parentNode, 
-        buttonExists: !!button?.parentNode 
-    }));
-    if (!prompt || !input || !output) {
-        console.error('get_guess: Missing required DOM elements', { prompt, input, output });
-        throw new Error('Missing required DOM elements');
-    }
+async function get_guess(player, secret_word, mode, prompt, input, button, delay, display_feedback) {
+    console.log('get_guess: Starting, Loaded version 2025-06-19-v9.16', JSON.stringify({ prompt: prompt.innerText, inputExists: !!input, buttonExists: !!button }));
+    let resolveGuess;
+    const guessPromise = new Promise(resolve => {
+        resolveGuess = resolve;
+    });
 
     const normalized_secret = normalizar(secret_word);
-    const min_guesses_for_word = secret_word.length < 5 ? 1 : 2;
-    const permitir_palabra = guessed_letters.size >= min_guesses_for_word || Array.from(guessed_letters).some(l => secret_word.split('').filter(x => x === l).length > 1);
-    prompt.innerText = permitir_palabra ? `Adivina una letra o la palabra completa:` : `Adivina una letra:`;
 
-    // Ensure input and button are attached
-    if (!input.parentNode) {
-        console.warn('get_guess: Input not attached, reattaching');
-        prompt.parentNode.appendChild(input);
-    }
-    if (button && !button.parentNode) {
-        console.warn('get_guess: Button not attached, reattaching');
-        prompt.parentNode.appendChild(button);
-    }
-
-    try {
+    function handleGuess() {
+        const rawGuess = input.value;
+        const trimmedGuess = rawGuess.trim();
+        const normalized_guess = normalizar(trimmedGuess); // Normalize early
+        console.log('get_guess: button clicked', JSON.stringify({ rawGuess }));
+        console.log('get_guess: rawGuess', JSON.stringify({ rawGuess, trimmedGuess, normalized_guess, secret_word, normalized_secret }));
+        if (trimmedGuess === '') {
+            display_feedback('Por favor, ingresa tu adivinanza.', 'red', player, true);
+            return;
+        }
         input.value = '';
-        if (input.parentNode) input.focus();
-        if (button) {
-            button.disabled = true;
-            const enableButton = () => {
-                button.disabled = !input.value.trim();
-            };
-            input.addEventListener('input', enableButton);
-        }
-    } catch (err) {
-        console.error('get_guess: Error setting input focus', err);
-        throw new Error('Invalid input element');
+        resolveGuess({ player, guess: normalized_guess, penalizo: false, tries: {}, word_guessed: normalized_guess === normalized_secret });
     }
 
-    return new Promise((resolve, reject) => {
-        let enterHandler, buttonHandler;
-
-        const handleGuess = async () => {
-            const rawGuess = input.value || '';
-            const trimmedGuess = await rawGuess.trim();
-            console.log('get_guess: rawGuess', JSON.stringify({ rawGuess, trimmedGuess, secret_word, normalized_secret }));
-            if (!trimmedGuess) {
-                output.innerText = 'Entrada vacía. Ingresa una letra o palabra válida.';
-                output.style.color = 'red';
-                input.value = '';
-                if (input.parentNode) {
-                    try {
-                        await input.focus();
-                    } catch (err) {
-                        console.error('get_guess: Error refocusing input', err);
-                    }
-                }
-                return;
-            }
-            // Validate word or letter guess
-            if (permitir_palabra && trimmedGuess.length === secret_word.length && /^[a-záéíóúüñ]+$/.test(trimmedGuess)) {
-                cleanup();
-                resolve(trimmedGuess);
-            } else if (trimmedGuess.length === 1 && /^[a-záéíóúüñ]+$/.test(trimmedGuess)) {
-                cleanup();
-                resolve(trimmedGuess);
-            } else {
-                output.innerText = 'Entrada inválida. Ingresa una letra o palabra válida.';
-                output.style.color = 'red';
-                input.value = '';
-                if (input.parentNode) {
-                    try {
-                        await input.focus();
-                    } catch (err) {
-                        console.error('get_guess: Error refocusing input', err);
-                    }
-                }
-            }
-        };
-
-        enterHandler = async (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                console.log('get_guess: Enter pressed', JSON.stringify({ rawGuess: input.value }));
-                await handleGuess();
-            }
-        };
-
-        if (button) {
-            buttonHandler = async () => {
-                console.log('get_guess: button clicked', JSON.stringify({ rawGuess: input.value }));
-                await handleGuess();
-            };
-            button.addEventListener('click', buttonHandler);
-        }
-
-        const cleanup = () => {
-            try {
-                input.removeEventListener('keypress', enterHandler);
-                input.removeEventListener('input', () => {});
-                if (button && buttonHandler) {
-                    button.removeEventListener('click', buttonHandler);
-                    button.disabled = true;
-                }
-            } catch (e) {
-                console.error('get_guess: Error cleaning up listeners', e);
-            }
-        };
-
-        try {
-            input.addEventListener('keypress', enterHandler);
-        } catch (err) {
-            console.error('get_guess: Error attaching input', err);
-            cleanup();
-            reject(new Error('failed to attach input listener'));
+    input.addEventListener('keypress', function(event) {
+        if (event.key === 'Enter') {
+            handleGuess();
         }
     });
+
+    button.addEventListener('click', handleGuess);
+
+    let timeout_retries = 0;
+    const max_timeout_retries = 2;
+    const timeout_duration = 30000;
+
+    while (timeout_retries < max_timeout_retries) {
+        const timeout = new Promise(resolve => setTimeout(() => {
+            timeout_retries++;
+            const tries = {};
+            tries[player] = Math.max(0, (mode === '1' ? secret_word.length - 2 : Math.floor(secret_word.length / 2)) - timeout_retries);
+            console.log('get_guess: Timeout occurred', JSON.stringify({ player, timeout_retries }));
+            display_feedback(
+                timeout_retries === max_timeout_retries
+                    ? '¡Última oportunidad para ingresar tu adivinanza!'
+                    : `Por favor, ingresa tu adivinanza. Intentos restantes: ${tries[player]}.`,
+                'red',
+                player,
+                true
+            );
+            resolve({ player, guess: '', penalizo: true, tries, word_guessed: false });
+        }, timeout_duration));
+
+        const result = await Promise.race([guessPromise, timeout]);
+        if (result.guess !== '') {
+            input.removeEventListener('keypress', handleGuess);
+            button.removeEventListener('click', handleGuess);
+            return result;
+        }
+    }
+
+    input.removeEventListener('keypress', handleGuess);
+    button.removeEventListener('click', handleGuess);
+    return { player, guess: '', penalizo: true, tries: { [player]: 0 }, word_guessed: false };
 }
 
 function get_guess_feedback(guess, secret_word, player_score) {

@@ -1025,8 +1025,14 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
         return { penalizo, tries, scores, guessed_letters, word_guessed: normalizar(guess) === normalized_secret };
     }
 
-    // Clean up any stray difficulty buttons after guess processing
-    finally {
+    } catch (err) {
+        console.error('process_guess: Error processing guess', err);
+        feedback = `Error al procesar la adivinanza de ${player}: ${err.message || 'Unknown error'}.`;
+        feedback_color = 'red';
+        display_feedback(feedback, feedback_color, player, true);
+        return { penalizo: true, tries, scores, guessed_letters, word_guessed: false };
+    } finally {
+        // Clean up any stray difficulty buttons after guess processing
         const strayButtons = document.querySelectorAll('#difficulty-buttons');
         strayButtons.forEach(group => {
             if (group.parentNode) {

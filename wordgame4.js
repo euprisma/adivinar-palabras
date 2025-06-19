@@ -285,7 +285,7 @@ function escapeHTML(str) {
 }
 
 async function get_guess(guessed_letters, secret_word, prompt, input, output, button) {
-    console.log('get_guess: Starting, Loaded version 2025-06-19-v9.16', JSON.stringify({ 
+    console.log('get_guess: Starting, Loaded version 2025-06-19-v9.17', JSON.stringify({ 
         prompt: prompt?.innerText, 
         inputExists: !!input?.parentNode, 
         buttonExists: !!button?.parentNode 
@@ -311,13 +311,17 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
     }
 
     try {
-        input.value = '';
+        input.value = ''; // Clear input initially
         if (input.parentNode) input.focus();
         if (button) {
-            button.disabled = true;
+            button.disabled = true; // Disable button initially
             const enableButton = () => {
-                button.disabled = !input.value.trim();
+                button.disabled = !input.value.trim(); // Enable only if input is non-empty
+                console.log('get_guess: Button state updated', { inputValue: input.value, buttonDisabled: button.disabled });
             };
+            // Remove existing listeners to prevent duplicates
+            input.removeEventListener('input', input._enableButtonHandler);
+            input._enableButtonHandler = enableButton; // Store reference for removal
             input.addEventListener('input', enableButton);
         }
     } catch (err) {
@@ -328,43 +332,42 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
     return new Promise((resolve, reject) => {
         let enterHandler, buttonHandler;
 
-        const handleGuess = async () => {
+        const handleGuess = () => {
             const rawGuess = input.value || '';
-            const trimmedGuess = await rawGuess.trim();
-            // Normalize the guess before validation
+            const trimmedGuess = rawGuess.trim(); // Synchronous trim
             const normalizedGuess = normalizar(trimmedGuess);
-            console.log('get_guess: rawGuess', JSON.stringify({ rawGuess, trimmedGuess, normalizedGuess, secret_word, normalized_secret }));
+            console.log('get_guess: Handling guess', JSON.stringify({ rawGuess, trimmedGuess, normalizedGuess, secret_word, normalized_secret }));
             if (!trimmedGuess) {
                 output.innerText = 'Entrada vacía. Ingresa una letra o palabra válida.';
                 output.style.color = 'red';
-                input.value = '';
                 if (input.parentNode) {
                     try {
-                        await input.focus();
+                        input.focus();
                     } catch (err) {
                         console.error('get_guess: Error refocusing input', err);
                     }
                 }
-                return;
+                return false; // Indicate invalid guess
             }
             // Validate normalized guess
             if (permitir_palabra && normalizedGuess.length === normalized_secret.length && /^[a-záéíóúüñ]+$/.test(normalizedGuess)) {
-                cleanup();
-                resolve(normalizedGuess); // Return normalized guess
+                input.value = ''; // Clear input only after valid guess
+                return { valid: true, guess: normalizedGuess };
             } else if (normalizedGuess.length === 1 && /^[a-záéíóúüñ]+$/.test(normalizedGuess)) {
-                cleanup();
-                resolve(normalizedGuess); // Return normalized guess
+                input.value = ''; // Clear input only after valid guess
+                return { valid: true, guess: normalizedGuess };
             } else {
                 output.innerText = 'Entrada inválida. Ingresa una letra o palabra válida (solo letras, sin caracteres especiales).';
                 output.style.color = 'red';
-                input.value = '';
+                input.value = ''; // Clear input on invalid guess
                 if (input.parentNode) {
                     try {
-                        await input.focus();
+                        input.focus();
                     } catch (err) {
                         console.error('get_guess: Error refocusing input', err);
                     }
                 }
+                return false; // Indicate invalid guess
             }
         };
 
@@ -372,24 +375,35 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
             if (e.key === 'Enter') {
                 e.preventDefault();
                 console.log('get_guess: Enter pressed', JSON.stringify({ rawGuess: input.value }));
-                await handleGuess();
+                const result = handleGuess();
+                if (result.valid) {
+                    cleanup();
+                    resolve(result.guess);
+                }
             }
         };
 
         if (button) {
+            // Remove existing click listeners to prevent duplicates
+            button.removeEventListener('click', button._buttonHandler);
             buttonHandler = async () => {
-                console.log('get_guess: button clicked', JSON.stringify({ rawGuess: input.value }));
-                await handleGuess();
+                console.log('get_guess: Button clicked', JSON.stringify({ rawGuess: input.value, buttonDisabled: button.disabled }));
+                const result = handleGuess();
+                if (result.valid) {
+                    cleanup();
+                    resolve(result.guess);
+                }
             };
+            button._buttonHandler = buttonHandler; // Store reference for removal
             button.addEventListener('click', buttonHandler);
         }
 
         const cleanup = () => {
             try {
                 input.removeEventListener('keypress', enterHandler);
-                input.removeEventListener('input', () => {});
-                if (button && buttonHandler) {
-                    button.removeEventListener('click', buttonHandler);
+                input.removeEventListener('input', input._enableButtonHandler);
+                if (button && button._buttonHandler) {
+                    button.removeEventListener('click', button._buttonHandler);
                     button.disabled = true;
                 }
             } catch (e) {

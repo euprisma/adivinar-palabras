@@ -1015,7 +1015,7 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
         container.appendChild(button);
         container.appendChild(output);
         prompt.innerText = 'Ingresa una letra o la palabra completa:';
-        input.value = '';
+        input.value = ''; // Clear input only at initialization
         if (input.parentNode) input.focus();
         game_info = document.createElement('p');
         game_info.innerHTML = `--- Juego ${games_played + 1} de ${games_to_play} ---<br>Palabra secreta: ${provided_secret_word.length} letras.<br>Intentos: ${total_tries}. Puntaje máximo: ${max_score}.` +
@@ -1028,7 +1028,7 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
         container.insertBefore(progress, prompt);
         output.innerHTML = '';
         console.log('play_game: UI initialized');
-        update_ui(); // Added to show initial UI state
+        update_ui(); // Show initial UI state
     } catch (err) {
         console.error('play_game: Error setting up UI', err);
         output.innerText = 'Error al configurar la interfaz.';
@@ -1047,7 +1047,7 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
             }
             progress.innerText = `Palabra: ${formato_palabra(normalizar(provided_secret_word).split('').map(l => guessed_letters.has(l) ? l : "_"))}`;
             prompt.innerText = 'Ingresa una letra o la palabra completa:';
-            input.value = '';
+            // Removed input.value = '' to prevent clearing during guesses
             if (input.parentNode) input.focus();
             console.log('update_ui: UI updated', JSON.stringify({ player, score: scores[player], player_info: player_info.innerHTML }));
         } catch (err) {

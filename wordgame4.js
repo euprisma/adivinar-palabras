@@ -285,16 +285,20 @@ function escapeHTML(str) {
 }
 
 async function get_guess(guessed_letters, secret_word, prompt, input, output, button) {
-    console.log('get_guess: Starting, Loaded version 2025-06-19-v9.18', {
+    console.log('get_guess: Starting, Loaded version 2025-06-19-v9.19', {
         prompt: prompt?.innerText,
         inputExists: !!input?.parentNode,
         buttonExists: !!button?.parentNode,
-        inputValue: input?.value
+        inputValue: input?.value,
+        inputId: input?.id || 'no-id'
     });
     if (!prompt || !input || !output) {
         console.error('get_guess: Missing required DOM elements', { prompt, input, output });
         throw new Error('Missing required DOM elements');
     }
+
+    // Assign a unique ID to the input for tracking
+    input.id = input.id || `guess-input-${Date.now()}`;
 
     const normalized_secret = normalizar(secret_word);
     const min_guesses_for_word = secret_word.length < 5 ? 1 : 2;
@@ -311,23 +315,33 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
         prompt.parentNode.appendChild(button);
     }
 
+    let lastInputValue = ''; // Store latest input value
+
     try {
         input.value = ''; // Clear input initially
         if (input.parentNode) {
             input.focus();
-            console.log('get_guess: Input focused', { inputValue: input.value });
+            console.log('get_guess: Input focused', { inputValue: input.value, inputId: input.id });
         }
         if (button) {
             button.disabled = true; // Disable button initially
             const enableButton = () => {
+                lastInputValue = input.value; // Update stored value
                 const hasValue = !!input.value.trim();
                 button.disabled = !hasValue;
-                console.log('get_guess: Button state updated', { inputValue: input.value, trimmed: input.value.trim(), buttonDisabled: button.disabled });
+                console.log('get_guess: Button state updated', { inputValue: input.value, trimmed: input.value.trim(), lastInputValue, buttonDisabled: button.disabled, inputId: input.id });
             };
-            // Remove existing input listeners
+            // Debug blur events
+            const blurHandler = () => {
+                console.log('get_guess: Input blurred', { inputValue: input.value, lastInputValue, inputId: input.id });
+            };
+            // Remove existing listeners
             input.removeEventListener('input', input._enableButtonHandler);
+            input.removeEventListener('blur', input._blurHandler);
             input._enableButtonHandler = enableButton;
+            input._blurHandler = blurHandler;
             input.addEventListener('input', enableButton);
+            input.addEventListener('blur', blurHandler);
         }
     } catch (err) {
         console.error('get_guess: Error setting input focus', err);
@@ -338,7 +352,7 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
         let enterHandler, buttonHandler;
 
         const handleGuess = (source, guessValue) => {
-            console.log('get_guess: handleGuess called', { source, guessValue, currentInputValue: input.value });
+            console.log('get_guess: handleGuess called', { source, guessValue, currentInputValue: input.value, lastInputValue, inputId: input.id });
             const rawGuess = guessValue || '';
             const trimmedGuess = rawGuess.trim();
             const normalizedGuess = normalizar(trimmedGuess);
@@ -349,7 +363,7 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
                 if (input.parentNode) {
                     try {
                         input.focus();
-                        console.log('get_guess: Input refocused after empty input');
+                        console.log('get_guess: Input refocused after empty input', { inputId: input.id });
                     } catch (err) {
                         console.error('get_guess: Error refocusing input', err);
                     }
@@ -370,7 +384,7 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
                 if (input.parentNode) {
                     try {
                         input.focus();
-                        console.log('get_guess: Input refocused after invalid input');
+                        console.log('get_guess: Input refocused after invalid input', { inputId: input.id });
                     } catch (err) {
                         console.error('get_guess: Error refocusing input', err);
                     }
@@ -382,7 +396,7 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
         enterHandler = (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
-                console.log('get_guess: Enter pressed', { inputValue: input.value });
+                console.log('get_guess: Enter pressed', { inputValue: input.value, lastInputValue, inputId: input.id });
                 const result = handleGuess('enter', input.value);
                 if (result.valid) {
                     cleanup();
@@ -392,16 +406,17 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
         };
 
         if (button) {
-            // Remove existing click listeners
             button.removeEventListener('click', button._buttonHandler);
             buttonHandler = (e) => {
-                e.preventDefault(); // Prevent any default behavior
-                console.log('get_guess: Button clicked', { inputValue: input.value, buttonDisabled: button.disabled });
+                e.preventDefault(); // Prevent form submission or browser defaults
+                console.log('get_guess: Button clicked', { inputValue: input.value, lastInputValue, buttonDisabled: button.disabled, inputId: input.id });
                 if (button.disabled) {
                     console.warn('get_guess: Button clicked while disabled, ignoring');
                     return;
                 }
-                const result = handleGuess('button', input.value);
+                // Use lastInputValue as fallback if input.value is empty
+                const guessValue = input.value || lastInputValue;
+                const result = handleGuess('button', guessValue);
                 if (result.valid) {
                     cleanup();
                     resolve(result.guess);
@@ -415,11 +430,12 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
             try {
                 input.removeEventListener('keypress', enterHandler);
                 input.removeEventListener('input', input._enableButtonHandler);
+                input.removeEventListener('blur', input._blurHandler);
                 if (button && button._buttonHandler) {
                     button.removeEventListener('click', button._buttonHandler);
                     button.disabled = true;
                 }
-                console.log('get_guess: Event listeners cleaned up');
+                console.log('get_guess: Event listeners cleaned up', { inputId: input.id });
             } catch (e) {
                 console.error('get_guess: Error cleaning up listeners', e);
             }
@@ -434,6 +450,7 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
         }
     });
 }
+
 function get_guess_feedback(guess, secret_word, player_score) {
     const feedback = [];
     const secret_norm = normalizar(secret_word);

@@ -1047,7 +1047,6 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
             }
             progress.innerText = `Palabra: ${formato_palabra(normalizar(provided_secret_word).split('').map(l => guessed_letters.has(l) ? l : "_"))}`;
             prompt.innerText = 'Ingresa una letra o la palabra completa:';
-            // Removed input.value = '' to prevent clearing during guesses
             if (input.parentNode) input.focus();
             console.log('update_ui: UI updated', JSON.stringify({ player, score: scores[player], player_info: player_info.innerHTML }));
         } catch (err) {
@@ -1074,6 +1073,12 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
                 current_player_idx = (current_player_idx + 1) % players.length;
                 update_ui();
                 continue;
+            }
+
+            // Clear input before human player's turn (not AI)
+            if (player !== 'IA' && input.parentNode) {
+                input.value = '';
+                input.focus();
             }
 
             const result = await process_guess(

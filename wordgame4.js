@@ -1059,16 +1059,16 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
 
         // Initialize missing player states
         players.forEach(player => {
-            if (!tries[player]) tries[player] = total_tries;
-            if (!scores[player]) scores[player] = 0;
-            if (!lastCorrectWasVowel[player]) lastCorrectWasVowel[player] = false;
+            if (tries[player] == null) tries[player] = total_tries;
+            if (scores[player] == null) scores[player] = 0;
+            if (lastCorrectWasVowel[player] == null) lastCorrectWasVowel[player] = false;
         });
 
         while (Object.values(tries).some(t => t > 0) &&
                !normalizar(provided_secret_word).split('').every(l => guessed_letters.has(l))) {
             const player = players[current_player_idx];
             // Skip if player has no tries left or undefined
-            if (!tries[player] || tries[player] <= 0) {
+            if (tries[player] == null || tries[player] <= 0) {
                 console.log('game_loop: Skipping player', JSON.stringify({ player, tries: tries[player] || 'undefined' }));
                 current_player_idx = (current_player_idx + 1) % players.length;
                 update_ui();
@@ -1096,10 +1096,6 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
                 display_feedback
             );
 
-            // Fallback if process_guess returns undefined tries
-            tries = result.tries || tries;
-            scores = result.scores || scores;
-
             console.log('game_loop: Post-guess state', JSON.stringify({
                 player,
                 score: scores[player],
@@ -1108,7 +1104,7 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
                 word_guessed: result.word_guessed
             }));
 
-            if (result.tries[player] === 0) {
+            if (result.tries[player] == null || result.tries[player] === 0) {
                 display_feedback(`¡<strong>${player}</strong> sin intentos!`, 'red', player, true);
                 await delay(500);
             }
@@ -1121,7 +1117,7 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
             if (mode === '2' || mode === '3') {
                 let next_idx = (current_player_idx + 1) % players.length;
                 let tries_checked = 0;
-                while (tries[players[next_idx]] <= 0 && tries_checked < players.length) {
+                while ((tries[players[next_idx]] == null || tries[players[next_idx]] <= 0) && tries_checked < players.length) {
                     next_idx = (next_idx + 1) % players.length;
                     tries_checked++;
                 }
@@ -1189,7 +1185,7 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
     repeat_button.style.cursor = 'pointer';
     repeat_button.style.margin = '5px';
     repeat_button.onclick = () => {
-        console.log('play_game: repeat_button: Repeating game series for mode', mode, { players });
+        console.log('play_game: repeat_button: Repeating game series for mode', mode, JSON.stringify({ players }));
         output.innerText = '';
         const reset_scores = Object.fromEntries(players.map(p => [p, 0]));
         const reset_wins = Object.fromEntries(players.map(p => [p, 0]));
@@ -1245,7 +1241,6 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
     container.appendChild(button_group);
     console.log('play_game: Buttons rendered', JSON.stringify({ repeat: !!repeat_button, restart: !!restart_button, next: mode !== '1' && games_played < games_to_play - 1 }));
 }
-
 
 async function main() {
     console.log('main: Starting, Loaded version 2025-06-16-v9.8');

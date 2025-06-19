@@ -717,7 +717,7 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
         retried: 0, 
         difficulty,
         mode,
-        version: '2025-06-19-v9.22'
+        version: '2025-06-19-v9.23'
     });
     let retried = 0;
     let timeout_retries = 0;
@@ -801,230 +801,230 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
         }
     };
 
-    if (mode === '3' && player === 'IA') {
-        display_feedback(`IA está pensando...`, 'blue', player);
-        await delay(1000);
-        guess = await get_ai_guess_wrapper();
-        if (!guess) return { penalizo, tries, scores, guessed_letters, word_guessed: false };
-    } else {
-        while (timeout_retries < max_timeout_retries) {
-            const result = await get_human_guess();
-            if (result === null) continue;
-            if (result === false) return { penalizo, tries, scores, guessed_letters, word_guessed: false };
-            guess = result;
-            break;
-        }
-        if (timeout_retries >= max_timeout_retries) {
-            return { penalizo, tries, scores, guessed_letters, word_guessed: false };
-        }
-    }
-
-    while (retried < max_retries) {
-        if (!guess) {
-            penalizo = true;
-            feedback = `Adivinanza inválida. Pierdes el turno.`;
-            feedback_color = 'red';
-            display_feedback(feedback, feedback_color, player, true);
-            break;
-        }
-
-        console.log('process_guess: Processing guess', JSON.stringify({ player, guess, normalized_guess: normalizar(guess), normalized_secret }));
-
-        if (guess.length === 1 && lastCorrectWasVowel[player] && vowels.has(guess)) {
-            display_feedback(`Inválido. Ingrese una consonante.`, 'red', player);
-            retried++;
-            console.log('process_guess: Invalid vowel guess', { player, guess, retried });
-            if (retried >= max_retries) {
-                penalizo = true;
-                feedback = `Demasiados intentos inválidos. Pierdes el turno.`;
-                if (scores[player] > 0) {
-                    const penalty = Math.min(1, scores[player]);
-                    feedback += ` (-${penalty} punto)`;
-                    scores[player] = Math.max(0, scores[player] - penalty);
-                    console.log('process_guess: Max retries penalty applied', { player, penalty, new_score: scores[player] });
-                }
-                feedback_color = 'red';
-                display_feedback(feedback, feedback_color, player);
-                break;
-            }
-
-            if (player === 'IA') {
-                guess = await get_ai_guess_wrapper(true);
-                if (!guess) break;
-            } else {
+    try {
+        if (mode === '3' && player === 'IA') {
+            display_feedback(`IA está pensando...`, 'blue', player);
+            await delay(1000);
+            guess = await get_ai_guess_wrapper();
+            if (!guess) return { penalizo, tries, scores, guessed_letters, word_guessed: false };
+        } else {
+            while (timeout_retries < max_timeout_retries) {
                 const result = await get_human_guess();
                 if (result === null) continue;
                 if (result === false) return { penalizo, tries, scores, guessed_letters, word_guessed: false };
                 guess = result;
+                break;
             }
-            continue;
+            if (timeout_retries >= max_timeout_retries) {
+                return { penalizo, tries, scores, guessed_letters, word_guessed: false };
+            }
         }
 
-        if (guess.length === 1 && !secret_word.includes(guess) && used_wrong_letters.has(guess)) {
-            if (retried < max_retries - 1) {
-                display_feedback(`Advertencia: '${guess}' ya intentada. Intenta de nuevo.`, 'orange', player);
-                retried++;
-                console.log('process_guess: Repeated wrong letter', JSON.stringify({ player, guess, retried }));
-                if (player === 'IA') {
-                    guess = await get_ai_guess_wrapper();
-                    if (!guess) break;
-                } else {
-                    const result = await get_human_guess();
-                    if (result === null) continue;
-                    if (result === false) return { penalizo, tries, scores, guessed_letters, word_guessed: false };
-                    guess = result;
-                }
-                continue;
-            }
-            penalizo = true;
-            if (scores[player] > 0) {
-                const penalty = Math.min(1, scores[player]);
-                feedback = `'${guess}' ya intentada. (-${penalty} punto)`;
+        while (retried < max_retries) {
+            if (!guess) {
+                penalizo = true;
+                feedback = `Adivinanza inválida. Pierdes el turno.`;
                 feedback_color = 'red';
-                scores[player] = Math.max(0, scores[player] - penalty);
-                console.log('process_guess: Repeated wrong letter penalty', JSON.stringify({ player, penalty, new_score: scores[player] }));
-            } else {
-                feedback = `'${guess}' ya intentada.`;
-                feedback_color = 'red';
+                display_feedback(feedback, feedback_color, player, true);
+                break;
             }
-            display_feedback(feedback, feedback_color, player);
-            break;
-        } else if (guess.length === 1 && secret_word.includes(guess) && guessed_letters.has(guess)) {
-            if (retried < max_retries - 1) {
-                display_feedback(`Advertencia: '${guess}' ya adivinada. Intenta de nuevo.`, 'orange', player);
-                retried++;
-                console.log('process_guess: Repeated correct letter', JSON.stringify({ player, guess, retried }));
-                if (player === 'IA') {
-                    guess = await get_ai_guess_wrapper();
-                    if (!guess) break;
-                } else {
-                    const result = await get_human_guess();
-                    if (result === null) continue;
-                    if (result === false) return { penalizo, tries, scores, guessed_letters, word_guessed: false };
-                    guess = result;
-                }
-                continue;
-            }
-            penalizo = true;
-            if (scores[player] > 0) {
-                const penalty = Math.min(1, scores[player]);
-                feedback = `'${guess}' ya adivinada. (-${penalty} punto)`;
-                feedback_color = 'red';
-                scores[player] = Math.max(0, scores[player] - penalty);
-                console.log('process_guess: Repeated correct letter penalty', JSON.stringify({ player, penalty, new_score: scores[player] }));
-            } else {
-                feedback = `'${guess}' ya adivinada.`;
-                feedback_color = 'red';
-            }
-            display_feedback(feedback, feedback_color, player);
-            break;
-        } else if (guess.length === secret_word.length && normalizar(guess) !== normalized_secret && used_wrong_words.has(normalizar(guess))) {
-            if (retried < max_retries - 1) {
-                display_feedback(`Advertencia: '${guess}' ya intentada. Intenta de nuevo.`, 'orange', player);
-                retried++;
-                console.log('process_guess: Repeated wrong word', JSON.stringify({ player, guess, retried }));
-                if (player === 'IA') {
-                    guess = await get_ai_guess_wrapper();
-                    if (!guess) break;
-                } else {
-                    const result = await get_human_guess();
-                    if (result === null) continue;
-                    if (result === false) return { penalizo, tries, scores, guessed_letters, word_guessed: false };
-                    guess = result;
-                }
-                continue;
-            }
-            penalizo = true;
-            if (scores[player] > 0) {
-                const penalty = Math.min(2, scores[player]);
-                feedback = `'${guess}' ya intentada. (-${penalty} puntos)`;
-                feedback_color = 'red';
-                scores[player] = Math.max(0, scores[player] - penalty);
-                console.log('process_guess: Repeated wrong word penalty', JSON.stringify({ player, penalty, new_score: scores[player] }));
-            } else {
-                feedback = `'${guess}' ya intentada.`;
-                feedback_color = 'red';
-            }
-            display_feedback(feedback, feedback_color, player);
-            break;
-        }
 
-        const score_before = scores[player];
-        if (guess.length === secret_word.length) {
-            if (normalizar(guess) === normalized_secret) {
-                scores[player] = max_score + (secret_word.length >= 10 ? Array.from(guessed_letters).filter(l => secret_word.includes(l)).length : 0);
-                guessed_letters.clear();
-                secret_word.split('').forEach(l => guessed_letters.add(l));
-                feedback = `¡Felicidades, ${player}! Adivinaste '${secret_word}'!`;
-                feedback_color = 'green';
-                restar_intento = false;
-            } else {
-                const letras_nuevas = new Set(secret_word.split('').filter(l => guess.includes(l) && !guessed_letters.has(l)));
-                const penalizacion = scores[player] > 0 ? Math.min(2, scores[player]) : 0;
-                let puntos_sumados = 0;
-                if (letras_nuevas.size) {
-                    const score_antes = scores[player];
-                    letras_nuevas.forEach(l => {
-                        puntos_sumados += secret_word.split('').filter(x => x === l).length;
-                        guessed_letters.add(l);
-                    });
-                    scores[player] = Math.min(max_score + (secret_word.length >= 10 ? Array.from(guessed_letters).filter(l => secret_word.includes(l)).length : 0), score_antes + puntos_sumados);
-                    feedback = `Incorrecto! '${guess}' no es la palabra pero contiene: ${Array.from(letras_nuevas).join(', ')}. (+${puntos_sumados} puntos)`;
-                    if (penalizacion > 0) {
-                        feedback += `\nPenalización: -${penalizacion} puntos`;
-                        scores[player] = Math.max(0, scores[player] - penalizacion);
-                    }
-                    feedback_color = 'orange';
-                } else {
-                    feedback = `Incorrecto. '${guess}' sin letras nuevas.`;
-                    if (penalizacion > 0) {
-                        feedback += ` (-${penalizacion} puntos)`;
-                        scores[player] = Math.max(0, scores[player] - penalizacion);
+            console.log('process_guess: Processing guess', JSON.stringify({ player, guess, normalized_guess: normalizar(guess), normalized_secret }));
+
+            if (guess.length === 1 && lastCorrectWasVowel[player] && vowels.has(guess)) {
+                display_feedback(`Inválido. Ingrese una consonante.`, 'red', player);
+                retried++;
+                console.log('process_guess: Invalid vowel guess', { player, guess, retried });
+                if (retried >= max_retries) {
+                    penalizo = true;
+                    feedback = `Demasiados intentos inválidos. Pierdes el turno.`;
+                    if (scores[player] > 0) {
+                        const penalty = Math.min(1, scores[player]);
+                        feedback += ` (-${penalty} punto)`;
+                        scores[player] = Math.max(0, scores[player] - penalty);
+                        console.log('process_guess: Max retries penalty applied', { player, penalty, new_score: scores[player] });
                     }
                     feedback_color = 'red';
+                    display_feedback(feedback, feedback_color, player);
+                    break;
                 }
-                used_wrong_words.add(normalizar(guess));
-                console.log('process_guess: Word guess processed', JSON.stringify({ guess, letras_nuevas: Array.from(letras_nuevas), score_before, score_after: scores[player] }));
+
+                if (player === 'IA') {
+                    guess = await get_ai_guess_wrapper(true);
+                    if (!guess) break;
+                } else {
+                    const result = await get_human_guess();
+                    if (result === null) continue;
+                    if (result === false) return { penalizo, tries, scores, guessed_letters, word_guessed: false };
+                    guess = result;
+                }
+                continue;
             }
-        } else {
-            const feedback_data = get_guess_feedback(guess, secret_word, scores[player]);
-            feedback = feedback_data.join('\n');
-            feedback_color = feedback_data.color;
-            if (secret_word.includes(guess) && !guessed_letters.has(guess)) {
-                scores[player] = Math.min(max_score, scores[player] + secret_word.split('').filter(l => l === guess).length);
-                guessed_letters.add(guess);
-                lastCorrectWasVowel[player] = vowels.has(guess);
-                console.log('process_guess: Correct letter guess', JSON.stringify({ player, guess, score_before, score_after: scores[player] }));
-            } else if (!secret_word.includes(guess)) {
-                used_wrong_letters.add(guess);
+
+            if (guess.length === 1 && !secret_word.includes(guess) && used_wrong_letters.has(guess)) {
+                if (retried < max_retries - 1) {
+                    display_feedback(`Advertencia: '${guess}' ya intentada. Intenta de nuevo.`, 'orange', player);
+                    retried++;
+                    console.log('process_guess: Repeated wrong letter', JSON.stringify({ player, guess, retried }));
+                    if (player === 'IA') {
+                        guess = await get_ai_guess_wrapper();
+                        if (!guess) break;
+                    } else {
+                        const result = await get_human_guess();
+                        if (result === null) continue;
+                        if (result === false) return { penalizo, tries, scores, guessed_letters, word_guessed: false };
+                        guess = result;
+                    }
+                    continue;
+                }
+                penalizo = true;
                 if (scores[player] > 0) {
                     const penalty = Math.min(1, scores[player]);
+                    feedback = `'${guess}' ya intentada. (-${penalty} punto)`;
+                    feedback_color = 'red';
                     scores[player] = Math.max(0, scores[player] - penalty);
-                    console.log('process_guess: Wrong letter penalty', JSON.stringify({ player, penalty, score_before, score_after: scores[player] }));
+                    console.log('process_guess: Repeated wrong letter penalty', JSON.stringify({ player, penalty, new_score: scores[player] }));
+                } else {
+                    feedback = `'${guess}' ya intentada.`;
+                    feedback_color = 'red';
                 }
-                lastCorrectWasVowel[player] = false;
+                display_feedback(feedback, feedback_color, player);
+                break;
+            } else if (guess.length === 1 && secret_word.includes(guess) && guessed_letters.has(guess)) {
+                if (retried < max_retries - 1) {
+                    display_feedback(`Advertencia: '${guess}' ya adivinada. Intenta de nuevo.`, 'orange', player);
+                    retried++;
+                    console.log('process_guess: Repeated correct letter', JSON.stringify({ player, guess, retried }));
+                    if (player === 'IA') {
+                        guess = await get_ai_guess_wrapper();
+                        if (!guess) break;
+                    } else {
+                        const result = await get_human_guess();
+                        if (result === null) continue;
+                        if (result === false) return { penalizo, tries, scores, guessed_letters, word_guessed: false };
+                        guess = result;
+                    }
+                    continue;
+                }
+                penalizo = true;
+                if (scores[player] > 0) {
+                    const penalty = Math.min(1, scores[player]);
+                    feedback = `'${guess}' ya adivinada. (-${penalty} punto)`;
+                    feedback_color = 'red';
+                    scores[player] = Math.max(0, scores[player] - penalty);
+                    console.log('process_guess: Repeated correct letter penalty', JSON.stringify({ player, penalty, new_score: scores[player] }));
+                } else {
+                    feedback = `'${guess}' ya adivinada.`;
+                    feedback_color = 'red';
+                }
+                display_feedback(feedback, feedback_color, player);
+                break;
+            } else if (guess.length === secret_word.length && normalizar(guess) !== normalized_secret && used_wrong_words.has(normalizar(guess))) {
+                if (retried < max_retries - 1) {
+                    display_feedback(`Advertencia: '${guess}' ya intentada. Intenta de nuevo.`, 'orange', player);
+                    retried++;
+                    console.log('process_guess: Repeated wrong word', JSON.stringify({ player, guess, retried }));
+                    if (player === 'IA') {
+                        guess = await get_ai_guess_wrapper();
+                        if (!guess) break;
+                    } else {
+                        const result = await get_human_guess();
+                        if (result === null) continue;
+                        if (result === false) return { penalizo, tries, scores, guessed_letters, word_guessed: false };
+                        guess = result;
+                    }
+                    continue;
+                }
+                penalizo = true;
+                if (scores[player] > 0) {
+                    const penalty = Math.min(2, scores[player]);
+                    feedback = `'${guess}' ya intentada. (-${penalty} puntos)`;
+                    feedback_color = 'red';
+                    scores[player] = Math.max(0, scores[player] - penalty);
+                    console.log('process_guess: Repeated wrong word penalty', JSON.stringify({ player, penalty, new_score: scores[player] }));
+                } else {
+                    feedback = `'${guess}' ya intentada.`;
+                    feedback_color = 'red';
+                }
+                display_feedback(feedback, feedback_color, player);
+                break;
             }
+
+            const score_before = scores[player];
+            if (guess.length === secret_word.length) {
+                if (normalizar(guess) === normalized_secret) {
+                    scores[player] = max_score + (secret_word.length >= 10 ? Array.from(guessed_letters).filter(l => secret_word.includes(l)).length : 0);
+                    guessed_letters.clear();
+                    secret_word.split('').forEach(l => guessed_letters.add(l));
+                    feedback = `¡Felicidades, ${player}! Adivinaste '${secret_word}'!`;
+                    feedback_color = 'green';
+                    restar_intento = false;
+                } else {
+                    const letras_nuevas = new Set(secret_word.split('').filter(l => guess.includes(l) && !guessed_letters.has(l)));
+                    const penalizacion = scores[player] > 0 ? Math.min(2, scores[player]) : 0;
+                    let puntos_sumados = 0;
+                    if (letras_nuevas.size) {
+                        const score_antes = scores[player];
+                        letras_nuevas.forEach(l => {
+                            puntos_sumados += secret_word.split('').filter(x => x === l).length;
+                            guessed_letters.add(l);
+                        });
+                        scores[player] = Math.min(max_score + (secret_word.length >= 10 ? Array.from(guessed_letters).filter(l => secret_word.includes(l)).length : 0), score_antes + puntos_sumados);
+                        feedback = `Incorrecto! '${guess}' no es la palabra pero contiene: ${Array.from(letras_nuevas).join(', ')}. (+${puntos_sumados} puntos)`;
+                        if (penalizacion > 0) {
+                            feedback += `\nPenalización: -${penalizacion} puntos`;
+                            scores[player] = Math.max(0, scores[player] - penalizacion);
+                        }
+                        feedback_color = 'orange';
+                    } else {
+                        feedback = `Incorrecto. '${guess}' sin letras nuevas.`;
+                        if (penalizacion > 0) {
+                            feedback += ` (-${penalizacion} puntos)`;
+                            scores[player] = Math.max(0, scores[player] - penalizacion);
+                        }
+                        feedback_color = 'red';
+                    }
+                    used_wrong_words.add(normalizar(guess));
+                    console.log('process_guess: Word guess processed', JSON.stringify({ guess, letras_nuevas: Array.from(letras_nuevas), score_before, score_after: scores[player] }));
+                }
+            } else {
+                const feedback_data = get_guess_feedback(guess, secret_word, scores[player]);
+                feedback = feedback_data.join('\n');
+                feedback_color = feedback_data.color;
+                if (secret_word.includes(guess) && !guessed_letters.has(guess)) {
+                    scores[player] = Math.min(max_score, scores[player] + secret_word.split('').filter(l => l === guess).length);
+                    guessed_letters.add(guess);
+                    lastCorrectWasVowel[player] = vowels.has(guess);
+                    console.log('process_guess: Correct letter guess', JSON.stringify({ player, guess, score_before, score_after: scores[player] }));
+                } else if (!secret_word.includes(guess)) {
+                    used_wrong_letters.add(guess);
+                    if (scores[player] > 0) {
+                        const penalty = Math.min(1, scores[player]);
+                        scores[player] = Math.max(0, scores[player] - penalty);
+                        console.log('process_guess: Wrong letter penalty', JSON.stringify({ player, penalty, score_before, score_after: scores[player] }));
+                    }
+                    lastCorrectWasVowel[player] = false;
+                }
+            }
+
+            if (feedback && feedback_color) {
+                display_feedback(feedback, feedback_color, player, true);
+                await delay(500);
+            }
+
+            if (restar_intento && !penalizo) {
+                tries[player]--;
+            }
+
+            console.log('process_guess: Ending for', player, JSON.stringify({ 
+                penalizo, 
+                tries: tries[player], 
+                score: scores[player], 
+                guessed_letters: Array.from(guessed_letters), 
+                word_guessed: normalizar(guess) === normalized_secret 
+            }));
+            return { penalizo, tries, scores, guessed_letters, word_guessed: normalizar(guess) === normalized_secret };
         }
-
-        if (feedback && feedback_color) {
-            display_feedback(feedback, feedback_color, player, true);
-            await delay(500);
-        }
-
-        if (restar_intento && !penalizo) {
-            tries[player]--;
-        }
-
-        console.log('process_guess: Ending for', player, JSON.stringify({ 
-            penalizo, 
-            tries: tries[player], 
-            score: scores[player], 
-            guessed_letters: Array.from(guessed_letters), 
-            word_guessed: normalizar(guess) === normalized_secret 
-        }));
-        return { penalizo, tries, scores, guessed_letters, word_guessed: normalizar(guess) === normalized_secret };
-    }
-
     } catch (err) {
         console.error('process_guess: Error processing guess', err);
         feedback = `Error al procesar la adivinanza de ${player}: ${err.message || 'Unknown error'}.`;

@@ -1016,7 +1016,7 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
         container.appendChild(output);
         prompt.innerText = 'Ingresa una letra o la palabra completa:';
         input.value = ''; // Clear input at initialization
-        if (input.parentNode) input.focus();
+        if (input.parentNode) input.focus(); // Focus only at start
         game_info = document.createElement('p');
         game_info.innerHTML = `--- Juego ${games_played + 1} de ${games_to_play} ---<br>Palabra secreta: ${provided_secret_word.length} letras.<br>Intentos: ${total_tries}. Puntaje máximo: ${max_score}.` +
             (mode === '3' ? `<br>Dificultad: ${difficulty || 'N/A'}` : '');
@@ -1047,7 +1047,7 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
             }
             progress.innerText = `Palabra: ${formato_palabra(normalizar(provided_secret_word).split('').map(l => guessed_letters.has(l) ? l : "_"))}`;
             prompt.innerText = 'Ingresa una letra o la palabra completa:';
-            if (input.parentNode) input.focus();
+            // Removed input.focus() to avoid repeated zooming
             console.log('update_ui: UI updated', JSON.stringify({ player, score: scores[player], player_info: player_info.innerHTML }));
         } catch (err) {
             console.error('update_ui: Error updating UI', err);
@@ -1075,10 +1075,10 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
                 continue;
             }
 
-            // Clear input before human player's turn (not AI)
+            // Clear input and focus before human player's turn (not AI)
             if (player !== 'IA' && input.parentNode) {
                 input.value = '';
-                input.focus();
+                input.focus(); // Focus only before human guess
             }
 
             // Clear feedback output in Modes 1 and 2 before new guess
@@ -1123,12 +1123,13 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
             if (result.tries[player] == null || result.tries[player] === 0) {
                 output.innerHTML = ''; // Clear before final message
                 display_feedback(`¡<strong>${player}</strong> sin intentos!`, 'red', player, false);
-                await delay(500);
+                await delay(1000); // Delay for final message
             }
 
             if (result.word_guessed || normalizar(provided_secret_word).split('').every(l => guessed_letters.has(l))) {
                 output.innerHTML = ''; // Clear before final message
                 display_feedback(`¡Felicidades, <strong>${player}</strong>! Adivinaste la palabra!`, 'green', player, false);
+                await delay(1000); // Delay for final message
                 break;
             }
 

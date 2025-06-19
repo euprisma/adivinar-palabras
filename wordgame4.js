@@ -285,7 +285,7 @@ function escapeHTML(str) {
 }
 
 async function get_guess(guessed_letters, secret_word, prompt, input, output, button) {
-    console.log('get_guess: Starting, Loaded version 2025-06-19-v9.21', {
+    console.log('get_guess: Starting, Loaded version 2025-06-19-v9.24', {
         prompt: prompt?.innerText,
         inputExists: !!input?.parentNode,
         buttonExists: !!button?.parentNode,
@@ -337,6 +337,8 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
             input.addEventListener('input', enableButton);
             input.addEventListener('blur', blurHandler);
         }
+        // Log container event listeners to detect create_game_ui triggers
+        console.log('get_guess: Container listeners', getEventListeners(prompt.parentNode));
     } catch (err) {
         console.error('get_guess: Error setting input focus', err);
         throw new Error('Invalid input element');
@@ -423,6 +425,8 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
                     cleanup();
                     resolve(result.guess);
                 }
+                // Check for create_game_ui trigger
+                console.log('get_guess: Post-guess container listeners', getEventListeners(prompt.parentNode));
             };
             button._buttonHandler = buttonHandler;
             button.id = button.id || `submit-button-${Date.now()}`; // Track button
@@ -453,7 +457,6 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
         }
     });
 }
-
 function get_guess_feedback(guess, secret_word, player_score) {
     const feedback = [];
     const secret_norm = normalizar(secret_word);
@@ -1045,7 +1048,7 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
 }
 async function play_game(loadingMessage, secret_word, mode, players, output, container, prompt, input, button, difficulty, games_played, games_to_play, total_scores, wins, delay, display_feedback) {
     const provided_secret_word = secret_word || await get_secret_word();
-    console.log('play_game: Secret word:', provided_secret_word, JSON.stringify({ games_played, games_to_play, total_scores, wins, mode, difficulty }));
+    console.log('play_game: Secret word:', provided_secret_word, JSON.stringify({ games_played, games_to_play, total_scores, wins, mode, difficulty, version: '2025-06-19-v9.24' }));
     const guessed_letters = new Set();
     const used_wrong_letters = new Set();
     const used_wrong_words = new Set();
@@ -1096,7 +1099,6 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
         container.insertBefore(progress, prompt);
         output.innerHTML = '';
         console.log('play_game: UI initialized');
-        // ... update_ui function remains unchanged ...
     } catch (err) {
         console.error('play_game: Error setting up UI', err);
         output.innerText = 'Error al configurar la interfaz.';
@@ -1131,208 +1133,69 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
 
     async function game_loop() {
         console.log('game_loop: Starting', JSON.stringify({ players, tries, scores, mode, secret_word_length: provided_secret_word.length }));
-
-        // Initialize missing player states
-        players.forEach(player => {
-            if (tries[player] == null) tries[player] = total_tries;
-            if (scores[player] == null) scores[player] = 0;
-            if (lastCorrectWasVowel[player] == null) lastCorrectWasVowel[player] = false;
-        });
-
-        while (Object.values(tries).some(t => t > 0) &&
-               !normalizar(provided_secret_word).split('').every(l => guessed_letters.has(l))) {
+        await update_ui();
+        while (Object.values(tries).some(t => t > 0) && !provided_secret_word.split('').every(l => guessed_letters.has(l))) {
             const player = players[current_player_idx];
-            // Skip if player has no tries left or undefined
-            if (tries[player] == null || tries[player] <= 0) {
-                console.log('game_loop: Skipping player', JSON.stringify({ player, tries: tries[player] || 'undefined' }));
-                current_player_idx = (current_player_idx + 1) % players.length;
-                update_ui();
-                continue;
-            }
-
-            // Clear input before human player's turn (not AI)
-            if (player !== 'IA' && input.parentNode) {
-                input.value = '';
-                input.focus();
-            }
-
-            // Clear feedback output in Modes 1 and 2 before new guess
-            if (mode === '1' || mode === '2') {
-                output.innerHTML = '';
-            }
-
+            console.log('game_loop: Turn for', player, JSON.stringify({ tries: tries[player], scores: scores[player] }));
             const result = await process_guess(
-                player,
-                guessed_letters,
-                provided_secret_word,
-                tries,
-                scores,
-                lastCorrectWasVowel,
-                used_wrong_letters,
-                used_wrong_words,
-                vowels,
-                max_score,
-                difficulty,
-                mode,
-                prompt,
-                input,
-                output,
-                button,
-                delay,
-                display_feedback
+                player, guessed_letters, provided_secret_word, tries, scores, lastCorrectWasVowel,
+                used_wrong_letters, used_wrong_words, vowels, max_score, difficulty, mode,
+                prompt, input, output, button, delay, display_feedback
             );
-
-            // Add delay after feedback in Modes 1 and 2 to allow reading
-            if (mode === '1' || mode === '2') {
-                await delay(1000); // 1000ms delay to read feedback
-            }
-
-            console.log('game_loop: Post-guess state', JSON.stringify({
-                player,
-                score: scores[player],
-                tries: tries[player],
-                guessed_letters: Array.from(guessed_letters),
-                word_guessed: result.word_guessed
-            }));
-
-            if (result.tries[player] == null || result.tries[player] === 0) {
-                output.innerHTML = ''; // Clear before final message
-                display_feedback(`¡<strong>${player}</strong> sin intentos!`, 'red', player, false);
-                await delay(500);
-            }
-
-            if (result.word_guessed || normalizar(provided_secret_word).split('').every(l => guessed_letters.has(l))) {
-                output.innerHTML = ''; // Clear before final message
-                display_feedback(`¡Felicidades, <strong>${player}</strong>! Adivinaste la palabra!`, 'green', player, false);
+            if (!result) {
+                console.error('game_loop: Process guess failed for', player);
+                display_feedback(`Error al procesar la adivinanza de ${player}.`, 'red', player, true);
                 break;
             }
-
-            if (mode === '2' || mode === '3') {
-                let next_idx = (current_player_idx + 1) % players.length;
-                let tries_checked = 0;
-                while ((tries[players[next_idx]] == null || tries[players[next_idx]] <= 0) && tries_checked < players.length) {
-                    next_idx = (next_idx + 1) % players.length;
-                    tries_checked++;
-                }
-                if (mode === '3' && player !== 'IA' && players[next_idx] === 'IA') {
-                    console.log('game_loop: Adding 1-second delay before AI turn');
-                    await delay(1000);
-                }
-                current_player_idx = next_idx;
+            const { penalizo, word_guessed } = result;
+            if (penalizo) {
+                console.log('game_loop: Player penalized', player, JSON.stringify({ tries: tries[player], scores: scores[player] }));
             }
-            update_ui();
+            if (word_guessed || tries[player] <= 0) {
+                console.log('game_loop: Game ending', JSON.stringify({ player, word_guessed, tries: tries[player] }));
+                break;
+            }
+            current_player_idx = (current_player_idx + 1) % players.length;
+            await update_ui();
         }
-
-        console.log('game_loop: Ended', JSON.stringify({ players, tries, scores, word_guessed: normalizar(provided_secret_word).split('').every(l => guessed_letters.has(l)) }));
+        // Final UI update
+        await update_ui();
+        // Display results
+        let result_message = '';
+        if (provided_secret_word.split('').every(l => guessed_letters.has(l))) {
+            const winner = players.reduce((a, b) => scores[a] > scores[b] ? a : b);
+            wins[winner] = (wins[winner] || 0) + 1;
+            total_scores[winner] = (total_scores[winner] || 0) + scores[winner];
+            result_message = `¡${winner} ganó! Palabra: ${provided_secret_word.toUpperCase()}.`;
+        } else {
+            result_message = `¡Nadie adivinó la palabra! Era: ${provided_secret_word.toUpperCase()}.`;
+        }
+        for (const p of players) {
+            total_scores[p] = (total_scores[p] || 0) + scores[p];
+            result_message += `\n${p}: ${scores[p]} puntos.`;
+        }
+        display_feedback(result_message, 'green', null, true);
+        console.log('game_loop: Game ended', JSON.stringify({ total_scores, wins }));
+        if (games_played + 1 < games_to_play) {
+            console.log('play_game: Starting next game', { next_game: games_played + 1 });
+            // Avoid calling create_game_ui here
+            await play_game(null, null, mode, players, output, container, prompt, input, button, difficulty, games_played + 1, games_to_play, total_scores, wins, delay, display_feedback);
+        } else {
+            let final_message = '--- Fin del juego ---';
+            for (const p of players) {
+                final_message += `\n${p}: ${total_scores[p]} puntos, ${wins[p] || 0} victorias.`;
+            }
+            display_feedback(final_message, 'blue', null, true);
+            console.log('play_game: All games completed', JSON.stringify({ total_scores, wins }));
+        }
     }
-
-    await game_loop();
-    await delay(3000); // Ensure scores are visible
-
-    console.log('play_game: Updating total_scores', JSON.stringify({ before: { ...total_scores }, game_scores: { ...scores } }));
-    players.forEach(p => {
-        total_scores[p] += scores[p];
-        console.log(`play_game: Updated total_scores for ${p}: ${total_scores[p]} (added ${scores[p]})`);
-    });
-    console.log('play_game: Total_scores after update', JSON.stringify({ ...total_scores }));
-
-    const button_group = document.createElement('div');
-    button_group.style.display = 'inline-block';
-    button_group.style.marginTop = '10px';
 
     try {
-        if (input.parentNode) container.removeChild(input);
-        if (button.parentNode) container.removeChild(button);
+        await game_loop();
     } catch (err) {
-        console.error('play_game: Error removing input/button', err);
+        console.error('play_game: Error in game loop', err);
+        display_feedback(`Error en el juego: ${err.message || 'Unknown error'}.`, 'red', null, true);
     }
-
-    const formatted_word = format_secret_word(provided_secret_word, guessed_letters);
-    output.innerHTML += `<br>Juego terminado. Palabra: ${formatted_word}.`;
-    output.style.color = 'black';
-    players.forEach(p => {
-        output.innerHTML += `<br><strong>${p}</strong> puntaje este juego: ${scores[p]}`;
-    });
-
-    if (players.length === 2) {
-        const [p1, p2] = players;
-        if (scores[p1] > scores[p2]) {
-            output.innerHTML += `<br>Ganador juego ${games_played + 1}: <strong>${p1}</strong>!`;
-            wins[p1]++;
-        } else if (scores[p2] > scores[p1]) {
-            output.innerHTML += `<br>Ganador juego ${games_played + 1}: <strong>${p2}</strong>!`;
-            wins[p2]++;
-        } else {
-            output.innerHTML += `<br>Empate!`;
-        }
-        output.innerHTML += `<br>Puntajes totales acumulados:`;
-        players.forEach(p => output.innerHTML += `<br><strong>${p}</strong>: ${total_scores[p]} puntos, ${wins[p]} ganados`);
-        console.log(`play_game: Total scores displayed: ${players.join(', ')}`, JSON.stringify(Object.entries(total_scores)));
-        container.appendChild(document.createElement('br'));
-    }
-
-    const repeat_button = document.createElement('button');
-    repeat_button.innerText = 'Repetir Juego';
-    repeat_button.style.padding = '8px 16px';
-    repeat_button.style.fontSize = '16px';
-    repeat_button.style.cursor = 'pointer';
-    repeat_button.style.margin = '5px';
-    repeat_button.onclick = () => {
-        console.log('play_game: repeat_button: Repeating game series for mode', mode, JSON.stringify({ players }));
-        output.innerText = '';
-        const reset_scores = Object.fromEntries(players.map(p => [p, 0]));
-        const reset_wins = Object.fromEntries(players.map(p => [p, 0]));
-        start_game(mode, players, output, container, prompt, input, button, difficulty, 0, reset_scores, reset_wins);
-    };
-    button_group.appendChild(repeat_button);
-
-    const restart_button = document.createElement('button');
-    restart_button.innerText = 'Reiniciar Juego';
-    restart_button.style.padding = '8px 16px';
-    restart_button.style.fontSize = '16px';
-    restart_button.style.cursor = 'pointer';
-    restart_button.style.margin = '5px';
-    restart_button.onclick = () => {
-        console.log('play_game: restart_button: Returning to mode selection screen for mode', mode);
-        document.body.innerHTML = '';
-        main();
-    };
-    button_group.appendChild(restart_button);
-
-    if (mode !== '1' && games_played < games_to_play - 1 && !Object.values(wins).some(w => w === 2)) {
-        const next_button = document.createElement('button');
-        next_button.innerText = 'Siguiente Juego';
-        next_button.style.padding = '8px 16px';
-        next_button.style.fontSize = '16px';
-        next_button.style.cursor = 'pointer';
-        next_button.style.margin = '5px';
-        next_button.onclick = () => {
-            console.log('play_game: next_button: Starting next game', JSON.stringify({ current_games_played: games_played, next_games_played: games_played + 1 }));
-            output.innerText = '';
-            if (button_group.parentNode) container.removeChild(button_group);
-            start_game(mode, players, output, container, prompt, input, button, difficulty, games_played + 1, total_scores, wins);
-        };
-        button_group.appendChild(next_button);
-    } else if (mode !== '1') {
-        output.innerHTML += `<br>--- Resultado Final ---`;
-        players.forEach(p => output.innerHTML += `<br><strong>${p}</strong>: ${total_scores[p]} puntos, ${wins[p]} ganados`);
-        const [p1, p2] = players;
-        if (wins[p1] > wins[p2]) {
-            output.innerHTML += `<br>Ganador absoluto: <strong>${p1}</strong>!`;
-        } else if (wins[p2] > wins[p1]) {
-            output.innerHTML += `<br>Ganador absoluto: <strong>${p2}</strong>!`;
-        } else if (total_scores[p1] > total_scores[p2]) {
-            output.innerHTML += `<br>Ganador absoluto (por puntos): <strong>${p1}</strong>!`;
-        } else if (total_scores[p2] > total_scores[p1]) {
-            output.innerHTML += `<br>Ganador absoluto (por puntos): <strong>${p2}</strong>!`;
-        } else {
-            output.innerHTML += `<br>Empate final!`;
-        }
-        console.log('play_game: Final result displayed', JSON.stringify({ total_scores, wins }));
-    }
-
-    container.appendChild(button_group);
-    console.log('play_game: Buttons rendered', JSON.stringify({ repeat: !!repeat_button, restart: !!restart_button, next: mode !== '1' && games_played < games_to_play - 1 }));
 }
 
 async function main() {

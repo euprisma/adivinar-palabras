@@ -1107,6 +1107,11 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
                 display_feedback
             );
 
+            // Add delay after feedback in Modes 1 and 2 to allow reading
+            if (mode === '1' || mode === '2') {
+                await delay(1000); // 1000ms delay to read feedback
+            }
+
             console.log('game_loop: Post-guess state', JSON.stringify({
                 player,
                 score: scores[player],

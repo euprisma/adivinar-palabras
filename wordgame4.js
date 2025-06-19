@@ -285,16 +285,17 @@ function escapeHTML(str) {
 }
 
 async function get_guess(guessed_letters, secret_word, prompt, input, output, button) {
-    console.log('get_guess: Starting, Loaded version 2025-06-19-v9.25', {
+    console.log('get_guess: Starting, Loaded version 2025-06-19-v9.26', {
         prompt: prompt?.innerText,
         inputExists: !!input?.parentNode,
         buttonExists: !!button?.parentNode,
         inputId: input?.id || 'no-id',
         inputType: input?.tagName,
-        inputInDOM: !!document.contains(input)
+        inputInDOM: !!document.contains(input),
+        buttonInDOM: !!document.contains(button)
     });
-    if (!prompt || !input || !output || !document.contains(input)) {
-        console.error('get_guess: Missing or detached DOM elements', { prompt, input, output, inputInDOM: !!document.contains(input) });
+    if (!prompt || !input || !output || !document.contains(input) || (button && !document.contains(button))) {
+        console.error('get_guess: Missing or detached DOM elements', { prompt, input, output, inputInDOM: !!document.contains(input), buttonInDOM: !!document.contains(button) });
         throw new Error('Missing or detached DOM elements');
     }
 
@@ -323,34 +324,42 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
                 console.log('get_guess: Input focused', { inputValue: input.value, inputId: input.id, isConnected: input.isConnected });
             } catch (focusErr) {
                 console.warn('get_guess: Failed to focus input, continuing', { error: focusErr.message, inputId: input.id });
-                // Continue instead of throwing
             }
         } else {
             console.warn('get_guess: Input not in DOM, skipping focus', { inputId: input.id });
         }
         if (button) {
-            button.disabled = true;
-            const enableButton = () => {
-                lastInputValue = input.value;
-                const hasValue = !!input.value.trim();
-                button.disabled = !hasValue;
-                console.log('get_guess: Button state updated', { inputValue: input.value, trimmed: input.value.trim(), lastInputValue, buttonDisabled: button.disabled, inputId: input.id });
-            };
-            const blurHandler = () => {
-                console.log('get_guess: Input blurred', { inputValue: input.value, lastInputValue, inputId: input.id });
-            };
-            input.removeEventListener('input', input._enableButtonHandler);
-            input.removeEventListener('blur', input._blurHandler);
-            input._enableButtonHandler = enableButton;
-            input._blurHandler = blurHandler;
-            input.addEventListener('input', enableButton);
-            input.addEventListener('blur', blurHandler);
+            try {
+                button.disabled = true;
+                const enableButton = () => {
+                    lastInputValue = input.value;
+                    const hasValue = !!input.value.trim();
+                    button.disabled = !hasValue;
+                    console.log('get_guess: Button state updated', { inputValue: input.value, trimmed: input.value.trim(), lastInputValue, buttonDisabled: button.disabled, inputId: input.id, buttonId: button.id });
+                };
+                const blurHandler = () => {
+                    console.log('get_guess: Input blurred', { inputValue: input.value, lastInputValue, inputId: input.id });
+                };
+                input.removeEventListener('input', input._enableButtonHandler);
+                input.removeEventListener('blur', input._blurHandler);
+                input._enableButtonHandler = enableButton;
+                input._blurHandler = blurHandler;
+                input.addEventListener('input', enableButton);
+                input.addEventListener('blur', blurHandler);
+            } catch (buttonErr) {
+                console.warn('get_guess: Failed to set up button listeners, continuing without button', { error: buttonErr.message, buttonId: button.id });
+                button = null; // Fallback to Enter-only input
+            }
         }
-        // Log container event listeners
-        console.log('get_guess: Container listeners', getEventListeners(prompt.parentNode));
+        // Skip getEventListeners if undefined
+        if (typeof getEventListeners === 'function') {
+            console.log('get_guess: Container listeners', getEventListeners(prompt.parentNode));
+        } else {
+            console.warn('get_guess: getEventListeners not available, skipping');
+        }
     } catch (err) {
-        console.error('get_guess: Error setting up input', err);
-        throw new Error('Failed to set up input');
+        console.error('get_guess: Error setting up input or button', err);
+        throw new Error('Failed to set up input or button');
     }
 
     return new Promise((resolve, reject) => {
@@ -432,11 +441,18 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
                     cleanup();
                     resolve(result.guess);
                 }
-                console.log('get_guess: Post-guess container listeners', getEventListeners(prompt.parentNode));
+                if (typeof getEventListeners === 'function') {
+                    console.log('get_guess: Post-guess container listeners', getEventListeners(prompt.parentNode));
+                }
             };
             button._buttonHandler = buttonHandler;
             button.id = button.id || `submit-button-${Date.now()}`;
-            button.addEventListener('click', buttonHandler);
+            try {
+                button.addEventListener('click', buttonHandler);
+            } catch (err) {
+                console.warn('get_guess: Failed to attach button listener, continuing without button', { error: err.message });
+                button = null;
+            }
         }
 
         const cleanup = () => {
@@ -727,18 +743,17 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
         retried: 0, 
         difficulty,
         mode,
-        version: '2025-06-19-v9.25'
+        version: '2025-06-19-v9.26'
     });
     let retried = 0;
-    let timeout_retries = 0;
+    let error_retries = 0; // Renamed for clarity
     const max_retries = 3;
-    const max_timeout_retries = 3;
+    const max_error_retries = 3;
     let penalizo = false;
     let restar_intento = true;
     let feedback, feedback_color;
     let guess = '';
 
-    // Safeguard: Ensure tries and scores are initialized
     if (!tries[player]) tries[player] = 5;
     if (!scores[player]) scores[player] = 0;
 
@@ -773,19 +788,19 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
                 display_feedback(feedback, feedback_color, player, true);
                 return null;
             }
-            timeout_retries = 0;
+            error_retries = 0;
             return human_guess.trim();
         } catch (error) {
             if (error.message === 'Input timeout') {
-                console.log('process_guess: Timeout occurred', { player, timeout_retries });
-                timeout_retries++;
-                if (timeout_retries === max_timeout_retries - 1) {
+                console.log('process_guess: Timeout occurred', { player, error_retries });
+                error_retries++;
+                if (error_retries === max_error_retries - 1) {
                     feedback = `Última oportunidad para ingresar tu adivinanza.`;
                     feedback_color = 'orange';
                     display_feedback(feedback, feedback_color, player, true);
                     return null;
-                } else if (timeout_retries < max_timeout_retries) {
-                    feedback = `Por favor, ingresa tu adivinanza. Intentos restantes: ${max_timeout_retries - timeout_retries}.`;
+                } else if (error_retries < max_error_retries) {
+                    feedback = `Por favor, ingresa tu adivinanza. Intentos restantes: ${max_error_retries - error_retries}.`;
                     feedback_color = 'orange';
                     display_feedback(feedback, feedback_color, player, true);
                     return null;
@@ -804,15 +819,15 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
                 }
             }
             console.error('process_guess: Guess input error:', { name: error.name, message: error.message, stack: error.stack });
-            timeout_retries++; // Increment for non-timeout errors
-            if (timeout_retries >= max_timeout_retries) {
+            error_retries++;
+            if (error_retries >= max_error_retries) {
                 penalizo = true;
                 feedback = `Error persistente al procesar la entrada. Pierdes el turno.`;
                 feedback_color = 'red';
                 display_feedback(feedback, feedback_color, player, true);
                 return false;
             }
-            feedback = `Error al procesar la entrada. Intenta de nuevo (${max_timeout_retries - timeout_retries} intentos restantes).`;
+            feedback = `Error al procesar la entrada. Intenta de nuevo (${max_error_retries - error_retries} intentos restantes).`;
             feedback_color = 'red';
             display_feedback(feedback, feedback_color, player, true);
             return null;
@@ -826,15 +841,15 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
             guess = await get_ai_guess_wrapper();
             if (!guess) return { penalizo, tries, scores, guessed_letters, word_guessed: false };
         } else {
-            while (timeout_retries < max_timeout_retries) {
+            while (error_retries < max_error_retries) {
                 const result = await get_human_guess();
                 if (result === null) continue;
-                if (result === false) return { penalizo, tries, scores, guessed_letters, word_guessed: false };
+                if (result === false) return { penalizo, tries, scores, guessed_letters, word_guessed: false, error: true };
                 guess = result;
                 break;
             }
-            if (timeout_retries >= max_timeout_retries) {
-                return { penalizo, tries, scores, guessed_letters, word_guessed: false };
+            if (error_retries >= max_error_retries) {
+                return { penalizo, tries, scores, guessed_letters, word_guessed: false, error: true };
             }
         }
 
@@ -873,7 +888,7 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
                 } else {
                     const result = await get_human_guess();
                     if (result === null) continue;
-                    if (result === false) return { penalizo, tries, scores, guessed_letters, word_guessed: false };
+                    if (result === false) return { penalizo, tries, scores, guessed_letters, word_guessed: false, error: true };
                     guess = result;
                 }
                 continue;
@@ -890,24 +905,24 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
                     } else {
                         const result = await get_human_guess();
                         if (result === null) continue;
-                        if (result === false) return { penalizo, tries, scores, guessed_letters, word_guessed: false };
+                        if (result === false) return { penalizo, tries, scores, guessed_letters, word_guessed: false, error: true };
                         guess = result;
                     }
-                    continue;
-                }
-                penalizo = true;
-                if (scores[player] > 0) {
-                    const penalty = Math.min(1, scores[player]);
-                    feedback = `'${guess}' ya intentada. (-${penalty} punto)`;
-                    feedback_color = 'red';
-                    scores[player] = Math.max(0, scores[player] - penalty);
-                    console.log('process_guess: Repeated wrong letter penalty', JSON.stringify({ player, penalty, new_score: scores[player] }));
                 } else {
-                    feedback = `'${guess}' ya intentada.`;
-                    feedback_color = 'red';
+                    penalizo = true;
+                    if (scores[player] > 0) {
+                        const penalty = Math.min(1, scores[player]);
+                        feedback = `'${guess}' ya intentada. (-${penalty} punto)`;
+                        feedback_color = 'red';
+                        scores[player] = Math.max(0, scores[player] - penalty);
+                        console.log('process_guess: Repeated wrong letter penalty', JSON.stringify({ player, penalty, new_score: scores[player] }));
+                    } else {
+                        feedback = `'${guess}' ya intentada.`;
+                        feedback_color = 'red';
+                    }
+                    display_feedback(feedback, feedback_color, player);
+                    break;
                 }
-                display_feedback(feedback, feedback_color, player);
-                break;
             } else if (guess.length === 1 && secret_word.includes(guess) && guessed_letters.has(guess)) {
                 if (retried < max_retries - 1) {
                     display_feedback(`Advertencia: '${guess}' ya adivinada. Intenta de nuevo.`, 'orange', player);
@@ -919,7 +934,7 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
                     } else {
                         const result = await get_human_guess();
                         if (result === null) continue;
-                        if (result === false) return { penalizo, tries, scores, guessed_letters, word_guessed: false };
+                        if (result === false) return { penalizo, tries, scores, guessed_letters, word_guessed: false, error: true };
                         guess = result;
                     }
                     continue;
@@ -948,7 +963,7 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
                     } else {
                         const result = await get_human_guess();
                         if (result === null) continue;
-                        if (result === false) return { penalizo, tries, scores, guessed_letters, word_guessed: false };
+                        if (result === false) return { penalizo, tries, scores, guessed_letters, word_guessed: false, error: true };
                         guess = result;
                     }
                     continue;
@@ -1041,14 +1056,14 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
                 guessed_letters: Array.from(guessed_letters), 
                 word_guessed: normalizar(guess) === normalized_secret 
             }));
-            return { penalizo, tries, scores, guessed_letters, word_guessed: normalizar(guess) === normalized_secret };
+            return { penalizo, tries, scores, guessed_letters, word_guessed: normalizar(guess) === normalized_secret, error: false };
         }
     } catch (err) {
         console.error('process_guess: Error processing guess', err);
         feedback = `Error al procesar la adivinanza de ${player}: ${err.message || 'Unknown error'}.`;
         feedback_color = 'red';
         display_feedback(feedback, feedback_color, player, true);
-        return { penalizo: true, tries, scores, guessed_letters, word_guessed: false };
+        return { penalizo: true, tries, scores, guessed_letters, word_guessed: false, error: true };
     } finally {
         const strayButtons = document.querySelectorAll('#difficulty-buttons');
         strayButtons.forEach(group => {

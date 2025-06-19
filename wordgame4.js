@@ -138,7 +138,7 @@ async function translateToSpanish(englishWords) {
             })
             .map(({ translated }) => translated)
             .filter(word => 
-                word.length >= 4 && word.length <= 12 && /^[a-zA-ZáéíóúüñÁÉÍÓÚÜÑ]+$/.test(word)
+                word.length >= 4 && word.length <= 12 && /^[a-záéíóúüñ]+$/.test(word)
             );
 
         console.log('Filtered Spanish words:', translatedWords);
@@ -331,7 +331,9 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
         const handleGuess = async () => {
             const rawGuess = input.value || '';
             const trimmedGuess = await rawGuess.trim();
-            console.log('get_guess: rawGuess', JSON.stringify({ rawGuess, trimmedGuess, secret_word, normalized_secret }));
+            // Normalize the guess before validation
+            const normalizedGuess = normalizar(trimmedGuess);
+            console.log('get_guess: rawGuess', JSON.stringify({ rawGuess, trimmedGuess, normalizedGuess, secret_word, normalized_secret }));
             if (!trimmedGuess) {
                 output.innerText = 'Entrada vacía. Ingresa una letra o palabra válida.';
                 output.style.color = 'red';
@@ -345,15 +347,15 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
                 }
                 return;
             }
-            // Validate word or letter guess
-            if (permitir_palabra && trimmedGuess.length === secret_word.length && /^[a-zA-ZáéíóúüñÁÉÍÓÚÜÑ]+$/.test(trimmedGuess)) {
+            // Validate normalized guess
+            if (permitir_palabra && normalizedGuess.length === normalized_secret.length && /^[a-záéíóúüñ]+$/.test(normalizedGuess)) {
                 cleanup();
-                resolve(trimmedGuess);
-            } else if (trimmedGuess.length === 1 && /^[a-zA-ZáéíóúüñÁÉÍÓÚÜÑ]+$/.test(trimmedGuess)) {
+                resolve(normalizedGuess); // Return normalized guess
+            } else if (normalizedGuess.length === 1 && /^[a-záéíóúüñ]+$/.test(normalizedGuess)) {
                 cleanup();
-                resolve(trimmedGuess);
+                resolve(normalizedGuess); // Return normalized guess
             } else {
-                output.innerText = 'Entrada inválida. Ingresa una letra o palabra válida.';
+                output.innerText = 'Entrada inválida. Ingresa una letra o palabra válida (solo letras, sin caracteres especiales).';
                 output.style.color = 'red';
                 input.value = '';
                 if (input.parentNode) {

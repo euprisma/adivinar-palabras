@@ -285,7 +285,12 @@ function escapeHTML(str) {
 }
 
 async function get_guess(player, secret_word, mode, prompt, input, button, delay, display_feedback) {
-    console.log('get_guess: Starting, Loaded version 2025-06-19-v9.16', JSON.stringify({ prompt: prompt.innerText, inputExists: !!input, buttonExists: !!button }));
+    console.log('get_guess: Starting, Loaded version 2025-06-19-v9.17', JSON.stringify({ prompt: prompt.innerText, inputExists: !!input, buttonExists: !!button }));
+    if (!input || !input.value === undefined) {
+        console.error('get_guess: Invalid input element', { input });
+        display_feedback('Error: Campo de entrada no disponible.', 'red', player, true);
+        return { player, guess: '', penalizo: true, tries: { [player]: 0 }, word_guessed: false };
+    }
     let resolveGuess;
     const guessPromise = new Promise(resolve => {
         resolveGuess = resolve;
@@ -294,9 +299,13 @@ async function get_guess(player, secret_word, mode, prompt, input, button, delay
     const normalized_secret = normalizar(secret_word);
 
     function handleGuess() {
-        const rawGuess = input.value;
+        if (!input) {
+            console.error('get_guess: handleGuess: Input element missing');
+            return;
+        }
+        const rawGuess = input.value || '';
         const trimmedGuess = rawGuess.trim();
-        const normalized_guess = normalizar(trimmedGuess); // Normalize early
+        const normalized_guess = normalizar(trimmedGuess);
         console.log('get_guess: button clicked', JSON.stringify({ rawGuess }));
         console.log('get_guess: rawGuess', JSON.stringify({ rawGuess, trimmedGuess, normalized_guess, secret_word, normalized_secret }));
         if (trimmedGuess === '') {
@@ -307,45 +316,47 @@ async function get_guess(player, secret_word, mode, prompt, input, button, delay
         resolveGuess({ player, guess: normalized_guess, penalizo: false, tries: {}, word_guessed: normalized_guess === normalized_secret });
     }
 
-    input.addEventListener('keypress', function(event) {
+    const keypressHandler = (event) => {
         if (event.key === 'Enter') {
+            event.preventDefault(); // Prevent form submission
             handleGuess();
         }
-    });
-
+    };
+    input.addEventListener('keypress', keypressHandler);
     button.addEventListener('click', handleGuess);
 
     let timeout_retries = 0;
     const max_timeout_retries = 2;
     const timeout_duration = 30000;
 
-    while (timeout_retries < max_timeout_retries) {
-        const timeout = new Promise(resolve => setTimeout(() => {
-            timeout_retries++;
-            const tries = {};
-            tries[player] = Math.max(0, (mode === '1' ? secret_word.length - 2 : Math.floor(secret_word.length / 2)) - timeout_retries);
-            console.log('get_guess: Timeout occurred', JSON.stringify({ player, timeout_retries }));
-            display_feedback(
-                timeout_retries === max_timeout_retries
-                    ? '¡Última oportunidad para ingresar tu adivinanza!'
-                    : `Por favor, ingresa tu adivinanza. Intentos restantes: ${tries[player]}.`,
-                'red',
-                player,
-                true
-            );
-            resolve({ player, guess: '', penalizo: true, tries, word_guessed: false });
-        }, timeout_duration));
+    try {
+        while (timeout_retries < max_timeout_retries) {
+            const timeout = new Promise(resolve => setTimeout(() => {
+                timeout_retries++;
+                const tries = {};
+                tries[player] = Math.max(0, (mode === '1' ? secret_word.length - 2 : Math.floor(secret_word.length / 2)) - timeout_retries);
+                console.log('get_guess: Timeout occurred', JSON.stringify({ player, timeout_retries }));
+                display_feedback(
+                    timeout_retries === max_timeout_retries
+                        ? '¡Última oportunidad para ingresar tu adivinanza!'
+                        : `Por favor, ingresa tu adivinanza. Intentos restantes: ${tries[player]}.`,
+                    'red',
+                    player,
+                    true
+                );
+                resolve({ player, guess: '', penalizo: true, tries, word_guessed: false });
+            }, timeout_duration));
 
-        const result = await Promise.race([guessPromise, timeout]);
-        if (result.guess !== '') {
-            input.removeEventListener('keypress', handleGuess);
-            button.removeEventListener('click', handleGuess);
-            return result;
+            const result = await Promise.race([guessPromise, timeout]);
+            if (result.guess !== '') {
+                return result;
+            }
         }
+    } finally {
+        input.removeEventListener('keypress', keypressHandler);
+        button.removeEventListener('click', handleGuess);
     }
 
-    input.removeEventListener('keypress', handleGuess);
-    button.removeEventListener('click', handleGuess);
     return { player, guess: '', penalizo: true, tries: { [player]: 0 }, word_guessed: false };
 }
 
@@ -960,7 +971,7 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
         container.appendChild(output);
         prompt.innerText = 'Ingresa una letra o la palabra completa:';
         input.value = ''; // Clear input at initialization
-        if (input.parentNode) input.focus(); // Focus only at start
+        if (input.parentNode) input.focus(); // Focus at start
         game_info = document.createElement('p');
         game_info.innerHTML = `--- Juego ${games_played + 1} de ${games_to_play} ---<br>Palabra secreta: ${provided_secret_word.length} letras.<br>Intentos: ${total_tries}. Puntaje máximo: ${max_score}.` +
             (mode === '3' ? `<br>Dificultad: ${difficulty || 'N/A'}` : '');
@@ -971,8 +982,7 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
         container.insertBefore(player_info, prompt);
         container.insertBefore(progress, prompt);
         output.innerHTML = '';
-        console.log('play_game: UI initialized');
-        update_ui(); // Show initial UI state
+        console.log('play_game: UI initialized', JSON.stringify({ prompt: prompt.innerText }));
     } catch (err) {
         console.error('play_game: Error setting up UI', err);
         output.innerText = 'Error al configurar la interfaz.';
@@ -991,7 +1001,6 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
             }
             progress.innerText = `Palabra: ${formato_palabra(normalizar(provided_secret_word).split('').map(l => guessed_letters.has(l) ? l : "_"))}`;
             prompt.innerText = 'Ingresa una letra o la palabra completa:';
-            // Removed input.focus() to avoid repeated zooming
             console.log('update_ui: UI updated', JSON.stringify({ player, score: scores[player], player_info: player_info.innerHTML }));
         } catch (err) {
             console.error('update_ui: Error updating UI', err);
@@ -1022,7 +1031,7 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
             // Clear input and focus before human player's turn (not AI)
             if (player !== 'IA' && input.parentNode) {
                 input.value = '';
-                input.focus(); // Focus only before human guess
+                input.focus();
             }
 
             // Clear feedback output in Modes 1 and 2 before new guess
@@ -1053,7 +1062,7 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
 
             // Add delay after feedback in Modes 1 and 2 to allow reading
             if (mode === '1' || mode === '2') {
-                await delay(1000); // 1000ms delay to read feedback
+                await delay(1000);
             }
 
             console.log('game_loop: Post-guess state', JSON.stringify({
@@ -1065,15 +1074,15 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
             }));
 
             if (result.tries[player] == null || result.tries[player] === 0) {
-                output.innerHTML = ''; // Clear before final message
+                output.innerHTML = '';
                 display_feedback(`¡<strong>${player}</strong> sin intentos!`, 'red', player, false);
-                await delay(1000); // Delay for final message
+                await delay(1000);
             }
 
             if (result.word_guessed || normalizar(provided_secret_word).split('').every(l => guessed_letters.has(l))) {
-                output.innerHTML = ''; // Clear before final message
+                output.innerHTML = '';
                 display_feedback(`¡Felicidades, <strong>${player}</strong>! Adivinaste la palabra!`, 'green', player, false);
-                await delay(1000); // Delay for final message
+                await delay(1000);
                 break;
             }
 

@@ -695,8 +695,12 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
     };
 
     const get_human_guess = async () => {
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Input timeout')), 30000));
         try {
-            const human_guess = await get_guess(guessed_letters, secret_word, prompt, input, output, button);
+            const human_guess = await Promise.race([
+                get_guess(guessed_letters, secret_word, prompt, input, output, button),
+                timeoutPromise
+            ]);
             console.log('process_guess: Human guess:', human_guess);
             if (!human_guess.trim()) {
                 feedback = `Entrada vacía. Por favor, ingresa una adivinanza válida.`;
@@ -707,32 +711,38 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
             timeout_retries = 0;
             return human_guess.trim();
         } catch (error) {
-            console.error('process_guess: Guess input error:', { name: error.name, message: error.message, stack: error.stack });
-            timeout_retries++;
-            console.log('process_guess: Input error', { player, timeout_retries });
-            if (timeout_retries === max_timeout_retries - 1) {
-                feedback = `Última oportunidad para ingresar tu adivinanza.`;
-                feedback_color = 'orange';
-                display_feedback(feedback, feedback_color, player, true);
-                return null;
-            } else if (timeout_retries < max_timeout_retries) {
-                feedback = `Por favor, ingresa tu adivinanza. Intentos restantes: ${max_timeout_retries - timeout_retries}.`;
-                feedback_color = 'orange';
-                display_feedback(feedback, feedback_color, player, true);
-                return null;
-            } else {
-                penalizo = true;
-                feedback = `Demasiados errores de entrada. Pierdes el turno.`;
-                if (scores[player] > 0) {
-                    const penalty = Math.min(1, scores[player]);
-                    feedback += ` (-${penalty} punto)`;
-                    scores[player] = Math.max(0, scores[player] - penalty);
-                    console.log('process_guess: Input error penalty applied', { player, penalty, new_score: scores[player] });
+            if (error.message === 'Input timeout') {
+                console.log('process_guess: Timeout occurred', { player, timeout_retries });
+                timeout_retries++;
+                if (timeout_retries === max_timeout_retries - 1) {
+                    feedback = `Última oportunidad para ingresar tu adivinanza.`;
+                    feedback_color = 'orange';
+                    display_feedback(feedback, feedback_color, player, true);
+                    return null;
+                } else if (timeout_retries < max_timeout_retries) {
+                    feedback = `Por favor, ingresa tu adivinanza. Intentos restantes: ${max_timeout_retries - timeout_retries}.`;
+                    feedback_color = 'orange';
+                    display_feedback(feedback, feedback_color, player, true);
+                    return null;
+                } else {
+                    penalizo = true;
+                    feedback = `Demasiados tiempos de espera. Pierdes el turno.`;
+                    if (scores[player] > 0) {
+                        const penalty = Math.min(1, scores[player]);
+                        feedback += ` (-${penalty} punto)`;
+                        scores[player] = Math.max(0, scores[player] - penalty);
+                        console.log('process_guess: Timeout penalty applied', { player, penalty, new_score: scores[player] });
+                    }
+                    feedback_color = 'red';
+                    display_feedback(feedback, feedback_color, player, true);
+                    return false;
                 }
-                feedback_color = 'red';
-                display_feedback(feedback, feedback_color, player, true);
-                return false;
             }
+            console.error('process_guess: Guess input error:', { name: error.name, message: error.message, stack: error.stack });
+            feedback = `Error al procesar la entrada. Intenta de nuevo.`;
+            feedback_color = 'red';
+            display_feedback(feedback, feedback_color, player, true);
+            return null;
         }
     };
 

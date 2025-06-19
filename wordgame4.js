@@ -138,7 +138,7 @@ async function translateToSpanish(englishWords) {
             })
             .map(({ translated }) => translated)
             .filter(word => 
-                word.length >= 4 && word.length <= 12 && /^[a-záéíóúüñ]+$/.test(word)
+                word.length >= 4 && word.length <= 12 && /^[a-zA-ZáéíóúüñÁÉÍÓÚÜÑ]+$/.test(word)
             );
 
         console.log('Filtered Spanish words:', translatedWords);
@@ -346,10 +346,10 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
                 return;
             }
             // Validate word or letter guess
-            if (permitir_palabra && trimmedGuess.length === secret_word.length && /^[a-záéíóúüñ]+$/.test(trimmedGuess)) {
+            if (permitir_palabra && trimmedGuess.length === secret_word.length && /^[a-zA-ZáéíóúüñÁÉÍÓÚÜÑ]+$/.test(trimmedGuess)) {
                 cleanup();
                 resolve(trimmedGuess);
-            } else if (trimmedGuess.length === 1 && /^[a-záéíóúüñ]+$/.test(trimmedGuess)) {
+            } else if (trimmedGuess.length === 1 && /^[a-zA-ZáéíóúüñÁÉÍÓÚÜÑ]+$/.test(trimmedGuess)) {
                 cleanup();
                 resolve(trimmedGuess);
             } else {

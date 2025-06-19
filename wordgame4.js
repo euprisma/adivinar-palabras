@@ -285,15 +285,17 @@ function escapeHTML(str) {
 }
 
 async function get_guess(guessed_letters, secret_word, prompt, input, output, button) {
-    console.log('get_guess: Starting, Loaded version 2025-06-19-v9.24', {
+    console.log('get_guess: Starting, Loaded version 2025-06-19-v9.25', {
         prompt: prompt?.innerText,
         inputExists: !!input?.parentNode,
         buttonExists: !!button?.parentNode,
-        inputId: input?.id || 'no-id'
+        inputId: input?.id || 'no-id',
+        inputType: input?.tagName,
+        inputInDOM: !!document.contains(input)
     });
-    if (!prompt || !input || !output) {
-        console.error('get_guess: Missing required DOM elements', { prompt, input, output });
-        throw new Error('Missing required DOM elements');
+    if (!prompt || !input || !output || !document.contains(input)) {
+        console.error('get_guess: Missing or detached DOM elements', { prompt, input, output, inputInDOM: !!document.contains(input) });
+        throw new Error('Missing or detached DOM elements');
     }
 
     input.id = input.id || `guess-input-${Date.now()}`;
@@ -315,9 +317,16 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
 
     try {
         input.value = '';
-        if (input.parentNode) {
-            input.focus();
-            console.log('get_guess: Input focused', { inputValue: input.value, inputId: input.id });
+        if (document.contains(input)) {
+            try {
+                input.focus();
+                console.log('get_guess: Input focused', { inputValue: input.value, inputId: input.id, isConnected: input.isConnected });
+            } catch (focusErr) {
+                console.warn('get_guess: Failed to focus input, continuing', { error: focusErr.message, inputId: input.id });
+                // Continue instead of throwing
+            }
+        } else {
+            console.warn('get_guess: Input not in DOM, skipping focus', { inputId: input.id });
         }
         if (button) {
             button.disabled = true;
@@ -337,11 +346,11 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
             input.addEventListener('input', enableButton);
             input.addEventListener('blur', blurHandler);
         }
-        // Log container event listeners to detect create_game_ui triggers
+        // Log container event listeners
         console.log('get_guess: Container listeners', getEventListeners(prompt.parentNode));
     } catch (err) {
-        console.error('get_guess: Error setting input focus', err);
-        throw new Error('Invalid input element');
+        console.error('get_guess: Error setting up input', err);
+        throw new Error('Failed to set up input');
     }
 
     return new Promise((resolve, reject) => {
@@ -356,12 +365,12 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
             if (!trimmedGuess) {
                 output.innerText = 'Entrada vacía. Ingresa una letra o palabra válida.';
                 output.style.color = 'red';
-                if (input.parentNode) {
+                if (document.contains(input)) {
                     try {
                         input.focus();
                         console.log('get_guess: Input refocused after empty input', { inputId: input.id });
                     } catch (err) {
-                        console.error('get_guess: Error refocusing input', err);
+                        console.warn('get_guess: Error refocusing input after empty', err);
                     }
                 }
                 return false;
@@ -376,12 +385,12 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
                 output.innerText = 'Entrada inválida. Ingresa una letra o palabra válida (solo letras, sin caracteres especiales).';
                 output.style.color = 'red';
                 input.value = '';
-                if (input.parentNode) {
+                if (document.contains(input)) {
                     try {
                         input.focus();
                         console.log('get_guess: Input refocused after invalid input', { inputId: input.id });
                     } catch (err) {
-                        console.error('get_guess: Error refocusing input', err);
+                        console.warn('get_guess: Error refocusing input after invalid', err);
                     }
                 }
                 return false;
@@ -404,19 +413,17 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
             button.removeEventListener('click', button._buttonHandler);
             buttonHandler = (e) => {
                 e.preventDefault();
-                e.stopPropagation(); // Prevent event bubbling
+                e.stopPropagation();
                 console.log('get_guess: Button clicked', { inputValue: input.value, lastInputValue, buttonDisabled: button.disabled, inputId: input.id, buttonId: button.id || 'no-id' });
                 if (button.disabled) {
                     console.warn('get_guess: Button clicked while disabled, ignoring');
                     return;
                 }
-                // Check for existing difficulty buttons before processing
                 const existingDifficultyButtons = document.querySelector('#difficulty-buttons');
                 console.log('get_guess: Pre-process difficulty buttons check', { hasDifficultyButtons: !!existingDifficultyButtons });
                 const guessValue = input.value || lastInputValue;
                 const result = handleGuess('button', guessValue);
                 if (result.valid) {
-                    // Re-check and remove difficulty buttons after processing
                     const postDifficultyButtons = document.querySelector('#difficulty-buttons');
                     if (postDifficultyButtons && postDifficultyButtons.parentNode) {
                         postDifficultyButtons.parentNode.removeChild(postDifficultyButtons);
@@ -425,11 +432,10 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
                     cleanup();
                     resolve(result.guess);
                 }
-                // Check for create_game_ui trigger
                 console.log('get_guess: Post-guess container listeners', getEventListeners(prompt.parentNode));
             };
             button._buttonHandler = buttonHandler;
-            button.id = button.id || `submit-button-${Date.now()}`; // Track button
+            button.id = button.id || `submit-button-${Date.now()}`;
             button.addEventListener('click', buttonHandler);
         }
 
@@ -457,6 +463,7 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
         }
     });
 }
+
 function get_guess_feedback(guess, secret_word, player_score) {
     const feedback = [];
     const secret_norm = normalizar(secret_word);
@@ -720,7 +727,7 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
         retried: 0, 
         difficulty,
         mode,
-        version: '2025-06-19-v9.23'
+        version: '2025-06-19-v9.25'
     });
     let retried = 0;
     let timeout_retries = 0;
@@ -732,8 +739,8 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
     let guess = '';
 
     // Safeguard: Ensure tries and scores are initialized
-    if (!tries[player]) tries[player] = 5; // Default tries
-    if (!scores[player]) scores[player] = 0; // Default score
+    if (!tries[player]) tries[player] = 5;
+    if (!scores[player]) scores[player] = 0;
 
     const normalized_secret = normalizar(secret_word);
 
@@ -797,7 +804,15 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
                 }
             }
             console.error('process_guess: Guess input error:', { name: error.name, message: error.message, stack: error.stack });
-            feedback = `Error al procesar la entrada. Intenta de nuevo.`;
+            timeout_retries++; // Increment for non-timeout errors
+            if (timeout_retries >= max_timeout_retries) {
+                penalizo = true;
+                feedback = `Error persistente al procesar la entrada. Pierdes el turno.`;
+                feedback_color = 'red';
+                display_feedback(feedback, feedback_color, player, true);
+                return false;
+            }
+            feedback = `Error al procesar la entrada. Intenta de nuevo (${max_timeout_retries - timeout_retries} intentos restantes).`;
             feedback_color = 'red';
             display_feedback(feedback, feedback_color, player, true);
             return null;
@@ -1035,7 +1050,6 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
         display_feedback(feedback, feedback_color, player, true);
         return { penalizo: true, tries, scores, guessed_letters, word_guessed: false };
     } finally {
-        // Clean up any stray difficulty buttons after guess processing
         const strayButtons = document.querySelectorAll('#difficulty-buttons');
         strayButtons.forEach(group => {
             if (group.parentNode) {
@@ -1046,6 +1060,7 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
         console.log('process_guess: Completed for', player, { guess, mode });
     }
 }
+
 async function play_game(loadingMessage, secret_word, mode, players, output, container, prompt, input, button, difficulty, games_played, games_to_play, total_scores, wins, delay, display_feedback) {
     const provided_secret_word = secret_word || await get_secret_word();
     console.log('play_game: Secret word:', provided_secret_word, JSON.stringify({ games_played, games_to_play, total_scores, wins, mode, difficulty, version: '2025-06-19-v9.24' }));

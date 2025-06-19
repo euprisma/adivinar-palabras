@@ -715,7 +715,9 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
         score: scores[player] || 0, 
         guessed_letters: Array.from(guessed_letters), 
         retried: 0, 
-        difficulty 
+        difficulty,
+        mode,
+        version: '2025-06-19-v9.22'
     });
     let retried = 0;
     let timeout_retries = 0;
@@ -1021,6 +1023,18 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
             word_guessed: normalizar(guess) === normalized_secret 
         }));
         return { penalizo, tries, scores, guessed_letters, word_guessed: normalizar(guess) === normalized_secret };
+    }
+
+    // Clean up any stray difficulty buttons after guess processing
+    finally {
+        const strayButtons = document.querySelectorAll('#difficulty-buttons');
+        strayButtons.forEach(group => {
+            if (group.parentNode) {
+                group.parentNode.removeChild(group);
+                console.log('process_guess: Removed stray difficulty buttons after guess', { id: group.id, player, mode });
+            }
+        });
+        console.log('process_guess: Completed for', player, { guess, mode });
     }
 }
 async function play_game(loadingMessage, secret_word, mode, players, output, container, prompt, input, button, difficulty, games_played, games_to_play, total_scores, wins, delay, display_feedback) {

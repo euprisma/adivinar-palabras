@@ -285,11 +285,10 @@ function escapeHTML(str) {
 }
 
 async function get_guess(guessed_letters, secret_word, prompt, input, output, button) {
-    console.log('get_guess: Starting, Loaded version 2025-06-19-v9.19', {
+    console.log('get_guess: Starting, Loaded version 2025-06-19-v9.21', {
         prompt: prompt?.innerText,
         inputExists: !!input?.parentNode,
         buttonExists: !!button?.parentNode,
-        inputValue: input?.value,
         inputId: input?.id || 'no-id'
     });
     if (!prompt || !input || !output) {
@@ -297,15 +296,12 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
         throw new Error('Missing required DOM elements');
     }
 
-    // Assign a unique ID to the input for tracking
     input.id = input.id || `guess-input-${Date.now()}`;
-
     const normalized_secret = normalizar(secret_word);
     const min_guesses_for_word = secret_word.length < 5 ? 1 : 2;
     const permitir_palabra = guessed_letters.size >= min_guesses_for_word || Array.from(guessed_letters).some(l => secret_word.split('').filter(x => x === l).length > 1);
     prompt.innerText = permitir_palabra ? `Adivina una letra o la palabra completa:` : `Adivina una letra:`;
 
-    // Ensure input and button are attached
     if (!input.parentNode) {
         console.warn('get_guess: Input not attached, reattaching');
         prompt.parentNode.appendChild(input);
@@ -315,27 +311,25 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
         prompt.parentNode.appendChild(button);
     }
 
-    let lastInputValue = ''; // Store latest input value
+    let lastInputValue = '';
 
     try {
-        input.value = ''; // Clear input initially
+        input.value = '';
         if (input.parentNode) {
             input.focus();
             console.log('get_guess: Input focused', { inputValue: input.value, inputId: input.id });
         }
         if (button) {
-            button.disabled = true; // Disable button initially
+            button.disabled = true;
             const enableButton = () => {
-                lastInputValue = input.value; // Update stored value
+                lastInputValue = input.value;
                 const hasValue = !!input.value.trim();
                 button.disabled = !hasValue;
                 console.log('get_guess: Button state updated', { inputValue: input.value, trimmed: input.value.trim(), lastInputValue, buttonDisabled: button.disabled, inputId: input.id });
             };
-            // Debug blur events
             const blurHandler = () => {
                 console.log('get_guess: Input blurred', { inputValue: input.value, lastInputValue, inputId: input.id });
             };
-            // Remove existing listeners
             input.removeEventListener('input', input._enableButtonHandler);
             input.removeEventListener('blur', input._blurHandler);
             input._enableButtonHandler = enableButton;
@@ -370,17 +364,16 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
                 }
                 return false;
             }
-            // Validate normalized guess
             if (permitir_palabra && normalizedGuess.length === normalized_secret.length && /^[a-záéíóúüñ]+$/.test(normalizedGuess)) {
-                input.value = ''; // Clear input only after valid guess
+                input.value = '';
                 return { valid: true, guess: normalizedGuess };
             } else if (normalizedGuess.length === 1 && /^[a-záéíóúüñ]+$/.test(normalizedGuess)) {
-                input.value = ''; // Clear input only after valid guess
+                input.value = '';
                 return { valid: true, guess: normalizedGuess };
             } else {
                 output.innerText = 'Entrada inválida. Ingresa una letra o palabra válida (solo letras, sin caracteres especiales).';
                 output.style.color = 'red';
-                input.value = ''; // Clear on invalid guess
+                input.value = '';
                 if (input.parentNode) {
                     try {
                         input.focus();
@@ -408,21 +401,31 @@ async function get_guess(guessed_letters, secret_word, prompt, input, output, bu
         if (button) {
             button.removeEventListener('click', button._buttonHandler);
             buttonHandler = (e) => {
-                e.preventDefault(); // Prevent form submission or browser defaults
-                console.log('get_guess: Button clicked', { inputValue: input.value, lastInputValue, buttonDisabled: button.disabled, inputId: input.id });
+                e.preventDefault();
+                e.stopPropagation(); // Prevent event bubbling
+                console.log('get_guess: Button clicked', { inputValue: input.value, lastInputValue, buttonDisabled: button.disabled, inputId: input.id, buttonId: button.id || 'no-id' });
                 if (button.disabled) {
                     console.warn('get_guess: Button clicked while disabled, ignoring');
                     return;
                 }
-                // Use lastInputValue as fallback if input.value is empty
+                // Check for existing difficulty buttons before processing
+                const existingDifficultyButtons = document.querySelector('#difficulty-buttons');
+                console.log('get_guess: Pre-process difficulty buttons check', { hasDifficultyButtons: !!existingDifficultyButtons });
                 const guessValue = input.value || lastInputValue;
                 const result = handleGuess('button', guessValue);
                 if (result.valid) {
+                    // Re-check and remove difficulty buttons after processing
+                    const postDifficultyButtons = document.querySelector('#difficulty-buttons');
+                    if (postDifficultyButtons && postDifficultyButtons.parentNode) {
+                        postDifficultyButtons.parentNode.removeChild(postDifficultyButtons);
+                        console.log('get_guess: Removed stray difficulty buttons post-guess', { buttonContainerId: postDifficultyButtons.id });
+                    }
                     cleanup();
                     resolve(result.guess);
                 }
             };
             button._buttonHandler = buttonHandler;
+            button.id = button.id || `submit-button-${Date.now()}`; // Track button
             button.addEventListener('click', buttonHandler);
         }
 
@@ -1022,7 +1025,7 @@ async function process_guess(player, guessed_letters, secret_word, tries, scores
 }
 async function play_game(loadingMessage, secret_word, mode, players, output, container, prompt, input, button, difficulty, games_played, games_to_play, total_scores, wins, delay, display_feedback) {
     const provided_secret_word = secret_word || await get_secret_word();
-    console.log('play_game: Secret word:', provided_secret_word, JSON.stringify({ games_played, games_to_play, total_scores, wins }));
+    console.log('play_game: Secret word:', provided_secret_word, JSON.stringify({ games_played, games_to_play, total_scores, wins, mode, difficulty }));
     const guessed_letters = new Set();
     const used_wrong_letters = new Set();
     const used_wrong_words = new Set();
@@ -1040,28 +1043,27 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
             container.removeChild(loadingMessage);
             console.log('play_game: Removed loading message');
         }
-        const existing_button_groups = container.querySelectorAll('div');
-        existing_button_groups.forEach(group => {
-            if (group.style.display === 'inline-block' || group.style.margin === '10px') {
-                container.removeChild(group);
-                console.log('play_game: Removed existing button group');
+        // Remove any existing difficulty button containers
+        const existingButtonContainers = container.querySelectorAll('#difficulty-buttons');
+        existingButtonContainers.forEach(group => {
+            if (group.parentNode) {
+                group.parentNode.removeChild(group);
+                console.log('play_game: Removed stray difficulty button container', { id: group.id });
             }
         });
-        // Ensure prompt and output are attached
-        if (!prompt.parentNode) container.appendChild(prompt);
-        if (!output.parentNode) container.appendChild(output);
-        // Clear other elements except prompt and output
+        // Clear other non-essential elements
         Array.from(container.children).forEach(el => {
             if (el !== prompt && el !== output && el !== input && el !== button) {
                 container.removeChild(el);
             }
         });
+        // Ensure core elements are attached
         container.appendChild(prompt);
         container.appendChild(input);
         container.appendChild(button);
         container.appendChild(output);
         prompt.innerText = 'Ingresa una letra o la palabra completa:';
-        input.value = ''; // Clear input at initialization
+        input.value = '';
         if (input.parentNode) input.focus();
         game_info = document.createElement('p');
         game_info.innerHTML = `--- Juego ${games_played + 1} de ${games_to_play} ---<br>Palabra secreta: ${provided_secret_word.length} letras.<br>Intentos: ${total_tries}. Puntaje máximo: ${max_score}.` +
@@ -1074,29 +1076,36 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
         container.insertBefore(progress, prompt);
         output.innerHTML = '';
         console.log('play_game: UI initialized');
-        update_ui(); // Show initial UI state
+        // ... update_ui function remains unchanged ...
     } catch (err) {
         console.error('play_game: Error setting up UI', err);
         output.innerText = 'Error al configurar la interfaz.';
         return;
     }
 
-    function update_ui() {
-        const player = players[current_player_idx];
-        const other_player = players[(current_player_idx + 1) % players.length] || null;
+    async function update_ui() {
         try {
-            if (mode === '1') {
-                player_info.innerHTML = `<strong>${player}</strong>: Intentos: ${tries[player]} | Puntaje: ${scores[player]}`;
-            } else {
-                player_info.innerHTML = `Turno de <strong>${player}</strong>: Intentos: ${tries[player]} | Puntaje: ${scores[player]}` +
-                    (other_player ? `<br><strong>${other_player}</strong>: Intentos: ${tries[other_player]} | Puntaje: ${scores[other_player]}` : '');
+            const hidden_word = provided_secret_word.split('')
+                .map(l => guessed_letters.has(l) ? l.toUpperCase() : '_')
+                .join(' ');
+            progress.innerHTML = `Palabra: ${hidden_word}`;
+            let players_info = '';
+            for (let i = 0; i < players.length; i++) {
+                const p = players[i];
+                players_info += `${i === current_player_idx ? 'Turno de ' : ''}${p}: Intentos: ${tries[p]} | Puntaje: ${scores[p]}${i === current_player_idx ? '\n' : '<br>'}`;
             }
-            progress.innerText = `Palabra: ${formato_palabra(normalizar(provided_secret_word).split('').map(l => guessed_letters.has(l) ? l : "_"))}`;
-            prompt.innerText = 'Ingresa una letra o la palabra completa:';
-            if (input.parentNode) input.focus();
-            console.log('update_ui: UI updated', JSON.stringify({ player, score: scores[player], player_info: player_info.innerHTML }));
+            player_info.innerHTML = players_info;
+            // Re-check for stray difficulty buttons after UI update
+            const strayButtons = container.querySelectorAll('#difficulty-buttons');
+            strayButtons.forEach(group => {
+                if (group.parentNode) {
+                    group.parentNode.removeChild(group);
+                    console.log('play_game: Removed stray difficulty buttons after UI update', { id: group.id });
+                }
+            });
         } catch (err) {
-            console.error('update_ui: Error updating UI', err);
+            console.error('play_game: Error updating UI', err);
+            output.innerText += `\nError al actualizar la interfaz.\n`;
         }
     }
 

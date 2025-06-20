@@ -665,11 +665,13 @@ async function start_game(mode, players, output, container, prompt, input, butto
     let loadingMessage;
     try {
         // Clear all elements except container
-        Array.from(container.children).forEach(el => {
-            container.removeChild(el);
-        });
-        // Reattach prompt and output
+        while (container.firstChild) {
+            container.removeChild(container.firstChild);
+        }
+        // Reattach all necessary UI elements
         container.appendChild(prompt);
+        container.appendChild(input);
+        container.appendChild(button);
         container.appendChild(output);
         prompt.innerText = '';
         output.innerText = '';

@@ -1040,9 +1040,10 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
             container.removeChild(loadingMessage);
             console.log('play_game: Removed loading message');
         }
+        // Enhanced cleanup: Remove any existing button containers
         const existing_button_groups = container.querySelectorAll('div');
         existing_button_groups.forEach(group => {
-            if (group.style.display === 'inline-block' || group.style.margin === '10px') {
+            if (group.style.margin === '10px' || group.style.display === 'inline-block') {
                 container.removeChild(group);
                 console.log('play_game: Removed existing button group');
             }
@@ -1050,7 +1051,7 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
         // Ensure prompt and output are attached
         if (!prompt.parentNode) container.appendChild(prompt);
         if (!output.parentNode) container.appendChild(output);
-        // Clear other elements except prompt and output
+        // Clear other elements except prompt, output, input, and button
         Array.from(container.children).forEach(el => {
             if (el !== prompt && el !== output && el !== input && el !== button) {
                 container.removeChild(el);

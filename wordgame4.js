@@ -474,16 +474,11 @@ function get_guess_feedback(guess, secret_word, player_score) {
 
 async function create_game_ui(mode = null, player1 = null, player2 = null, difficulty = null) {
     console.log('create_game_ui: Starting, Loaded version 2025-06-16-v9.8', { mode, player1, player2, difficulty });
-    console.log('create_game_ui called with parameters:', { mode, player1, player2, difficulty });
-    console.trace('create_game_ui call stack');
-    // Prevent UI reinitialization if game is active
-    if (isGameActive && !mode) {
-        console.warn('create_game_ui: Game already active, skipping UI reset');
+    if (document.body.innerHTML.includes('Juego de Adivinar Palabras') && !mode) {
+        console.warn('create_game_ui: UI already initialized, skipping reset');
         return null;
     }
-    // Mark game as active
     isGameActive = true;
-    // Rest of code
     document.body.innerHTML = '';
     const container = document.createElement('div');
     container.style.textAlign = 'center';
@@ -667,13 +662,11 @@ async function start_game(mode, players, output, container, prompt, input, butto
     let loadingMessage;
     try {
         // Clear all elements except container
-        while (container.firstChild) {
-            container.removeChild(container.firstChild);
-        }
-        // Reattach all necessary UI elements
+        Array.from(container.children).forEach(el => {
+            container.removeChild(el);
+        });
+        // Reattach prompt and output
         container.appendChild(prompt);
-        container.appendChild(input);
-        container.appendChild(button);
         container.appendChild(output);
         prompt.innerText = '';
         output.innerText = '';
@@ -1048,24 +1041,26 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
             container.removeChild(loadingMessage);
             console.log('play_game: Removed loading message');
         }
-        // Robust cleanup: Remove all divs that could be button containers
         const existing_button_groups = container.querySelectorAll('div');
         existing_button_groups.forEach(group => {
-            container.removeChild(group);
-            console.log('play_game: Removed div element (potential button group)');
-        });
-        // Ensure core UI elements are attached only once
-        if (!prompt.parentNode) container.appendChild(prompt);
-        if (!output.parentNode) container.appendChild(output);
-        if (!input.parentNode) container.appendChild(input);
-        if (!button.parentNode) container.appendChild(button);
-        // Clear other elements except core UI components
-        Array.from(container.children).forEach(el => {
-            if (el !== prompt && el !== output && el !== input && el !== button && el !== game_info && el !== player_info && el !== progress) {
-                container.removeChild(el);
-                console.log('play_game: Removed non-core element');
+            if (group.style.display === 'inline-block' || group.style.margin === '10px') {
+                container.removeChild(group);
+                console.log('play_game: Removed existing button group');
             }
         });
+        // Ensure prompt and output are attached
+        if (!prompt.parentNode) container.appendChild(prompt);
+        if (!output.parentNode) container.appendChild(output);
+        // Clear other elements except prompt and output
+        Array.from(container.children).forEach(el => {
+            if (el !== prompt && el !== output && el !== input && el !== button) {
+                container.removeChild(el);
+            }
+        });
+        container.appendChild(prompt);
+        container.appendChild(input);
+        container.appendChild(button);
+        container.appendChild(output);
         prompt.innerText = 'Ingresa una letra o la palabra completa:';
         input.value = ''; // Clear input at initialization
         if (input.parentNode) input.focus();
@@ -1079,40 +1074,12 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
         container.insertBefore(player_info, prompt);
         container.insertBefore(progress, prompt);
         output.innerHTML = '';
-        console.log('play_game: UI initialized', { inputAttached: !!input.parentNode, buttonAttached: !!button.parentNode });
+        console.log('play_game: UI initialized');
         update_ui(); // Show initial UI state
     } catch (err) {
         console.error('play_game: Error setting up UI', err);
         output.innerText = 'Error al configurar la interfaz.';
         return;
-    }
-
-    function update_ui() {
-        const player = players[current_player_idx];
-        const other_player = players[(current_player_idx + 1) % players.length] || null;
-        try {
-            if (mode === '1') {
-                player_info.innerHTML = `<strong>${player}</strong>: Intentos: ${tries[player]} | Puntaje: ${scores[player]}`;
-            } else {
-                player_info.innerHTML = `Turno de <strong>${player}</strong>: Intentos: ${tries[player]} | Puntaje: ${scores[player]}` +
-                    (other_player ? `<br><strong>${other_player}</strong>: Intentos: ${tries[other_player]} | Puntaje: ${scores[other_player]}` : '');
-            }
-            progress.innerText = `Palabra: ${formato_palabra(normalizar(provided_secret_word).split('').map(l => guessed_letters.has(l) ? l : "_"))}`;
-            prompt.innerText = 'Ingresa una letra o la palabra completa:';
-            // Ensure input and button are still attached
-            if (!input.parentNode) {
-                container.appendChild(input);
-                console.log('update_ui: Reattached input');
-            }
-            if (!button.parentNode) {
-                container.appendChild(button);
-                console.log('update_ui: Reattached button');
-            }
-            if (input.parentNode) input.focus();
-            console.log('update_ui: UI updated', JSON.stringify({ player, score: scores[player], player_info: player_info.innerHTML }));
-        } catch (err) {
-            console.error('update_ui: Error updating UI', err);
-        }
     }
 
     function update_ui() {
@@ -1342,6 +1309,7 @@ async function play_game(loadingMessage, secret_word, mode, players, output, con
 
 async function main() {
     console.log('main: Starting, Loaded version 2025-06-16-v9.8');
+    isGameActive = false;
     try {
         const ui = await create_game_ui();
         if (!ui) {

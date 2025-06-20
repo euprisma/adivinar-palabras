@@ -474,6 +474,8 @@ function get_guess_feedback(guess, secret_word, player_score) {
 
 async function create_game_ui(mode = null, player1 = null, player2 = null, difficulty = null) {
     console.log('create_game_ui: Starting, Loaded version 2025-06-16-v9.8', { mode, player1, player2, difficulty });
+    console.log('create_game_ui called with parameters:', { mode, player1, player2, difficulty });
+    console.trace('create_game_ui call stack');
     // Prevent UI reinitialization if game is active
     if (isGameActive && !mode) {
         console.warn('create_game_ui: Game already active, skipping UI reset');
